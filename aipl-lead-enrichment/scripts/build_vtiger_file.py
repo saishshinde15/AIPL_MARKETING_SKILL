@@ -114,24 +114,30 @@ def _normalize_phone(p):
     return p  # leave unchanged if doesn't fit any known pattern
 
 def _infer_industry(company):
-    """Guess industry from company name keywords."""
+    """Infer industry from explicit company-name keywords.
+    Returns empty string if no keyword matches — NEVER guesses "Other / Diversified"
+    (that was implying false certainty). Blank is honest.
+    """
     cl = str(company or '').lower()
     for industry, kws in INDUSTRY_KEYWORDS:
         if any(k in cl for k in kws):
             return industry
-    return 'Other / Diversified'
+    return ''  # honest — we don't know
 
-def _guess_website(company, existing):
-    """If existing website is empty, guess from company-name root."""
-    if existing and str(existing).strip() and str(existing).lower() != 'nan':
-        return existing
-    c = re.sub(r'\bm/s\s+', '', str(company or '').lower())
-    c = re.sub(r'\b(private|pvt|limited|ltd|llp|liability|partnership)\b\.?', '', c)
-    c = re.sub(r'[^\w\s]', '', c).strip()
-    words = [w for w in c.split() if w not in ('the','and','of','india','indian')]
-    if not words: return ''
-    base = ''.join(words[:2])[:20]
-    return f'https://www.{base}.com (unverified guess)' if base else ''
+def _clean_website(existing):
+    """Sanitize the Website field. Returns the value only if it's a real URL.
+    NEVER fabricates. If empty or invalid (e.g. email, phone), returns ''.
+    """
+    if not existing: return ''
+    s = str(existing).strip()
+    if not s or s.lower() == 'nan': return ''
+    # Reject obvious non-URLs that leaked from bad source data
+    if '@' in s:           return ''   # email in website column
+    if re.match(r'^[\d\+\-\s()]+$', s): return ''  # phone number
+    # Accept only if it looks like a URL or domain
+    if s.startswith(('http://','https://','www.')) or re.match(r'^[\w-]+\.[\w-]+', s):
+        return s
+    return ''
 
 def _salutation(first):
     f = (first or '').strip().lower()
@@ -219,14 +225,15 @@ def _build_row(src, enr):
     found_title = (enr.get('designation') or '').strip()
     mapped_title, is_it_role, is_default = _map_designation(found_title, has_name=has_name)
 
-    row['Salutation']    = _salutation(fn) if fn else ''
+    # Salutation: only set if enrichment explicitly provided one (don't guess from name)
+    row['Salutation']    = (enr.get('salutation') or '').strip()
     row['First Name']    = fn
     row['Last Name']     = ln
     row['Designation']   = mapped_title
     row['Primary Email'] = (enr.get('email') or '').strip()
     row['Office Phone']  = _normalize_phone(enr.get('phone'))
     row['Mobile Phone']  = _normalize_phone(enr.get('mobile'))
-    row['Website']       = _guess_website(row['Company'], enr.get('website'))
+    row['Website']       = _clean_website(enr.get('website'))
 
     # ---- Marketing-team defaults (so Vtiger doesn't require manual assign) ----
     row['Industry']        = _infer_industry(row['Company'])
