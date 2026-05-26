@@ -70,21 +70,27 @@ If the user asks "which tool for company X?", consult the table in `manual-mode-
 
 ## Hard rules (do not violate)
 
-1. **Never fabricate contact data.** If you can't find a name/email/phone, leave it blank. A blank field is better than a wrong one. The team will cold-call the switchboard for blanks.
-2. **Always cite source URLs.** For every populated name/email, include the source URL in the row's `Additional Details` column (LinkedIn search result, Zauba Corp page, company website, etc.). This lets the team verify before calling.
+1. **Never fabricate ANY data.** This applies to every field, not just contacts:
+   - **Names / emails / phones**: blank if you can't find them. The team will cold-call the switchboard for blanks.
+   - **Websites**: only write a URL you actually verified by visiting it or seeing it in an authoritative directory (LinkedIn company page, D&B, Zauba Corp's website field). NEVER auto-build `companyname.com` from the company name — that's a guess, and a wrong URL in Vtiger is actively harmful (leads to parked domains, competitor sites, cybersquatters). Blank is honest.
+   - **Industry**: only set when company-name keywords clearly imply it (PHARMA → Pharmaceuticals, FINANCE → Financial Services, CONSTRUCTION → Construction). Do NOT default to "Other / Diversified" — leave blank.
+   - **Salutation**: only set when enrichment EXPLICITLY tells you (e.g. LinkedIn says "Mrs.", or contact intro letter is signed Ms.). Never guess from a name-ending heuristic — Indian names like "Sai", "Aditya", "Krishna" break those rules constantly.
+2. **Always cite source URLs.** For every populated name/email/website, include the source URL in the row's `Additional Details` column. This lets the team verify before calling.
 3. **Flag confidence.** Tag each populated row as High / Medium / Low confidence in `Additional Details`:
    - High = verified on company website or directly matched LinkedIn profile with current job
    - Medium = MCA filing or LinkedIn snippet without direct verification
    - Low = inferred from old article, similar-name match, or partial data
-4. **Don't promise 100% coverage.** Realistic ceiling is 80-90% even with all free tools. Tell the user honestly when you can't find a company.
-5. **Respect the role flag.** When the only contact found is a Director/MD/Founder (not an IT-specific person), still include them — they're the gatekeeper — but prepend their `Additional Details` with `"ROLE FLAG: Not IT-specific — use as gatekeeper to reach IT decision-maker"`.
-6. **Tone for the team.** They're non-technical and impatient. Skip jargon. Give plain-English summaries: "Found 71 of 93 contacts. 22 still blank — these are mostly new Pvt Ltds with no web presence yet."
+4. **Sanity-check source data before preserving it.** If the enrichment dict has an email in the Website field (real bug we caught: `sanket1234@hotmail.com` in Century Finance's Website), reject it. `_clean_website()` does this automatically.
+5. **Don't promise 100% coverage.** Realistic ceiling is 80-90% even with all free tools. Tell the user honestly when you can't find a company.
+6. **Respect the role flag.** When the only contact found is a Director/MD/Founder (not an IT-specific person), still include them — they're the gatekeeper — but the Designation gets prefixed with `"Gatekeeper - "` (e.g. `Gatekeeper - Director`, `Gatekeeper - CEO`) so Vtiger can filter cleanly.
+7. **Tone for the team.** They're non-technical and impatient. Skip jargon. Give plain-English summaries: "Found 73 of 93 contacts. 20 still blank — 16 need MCA portal lookup, 4 need a JustDial switchboard call."
 
 ## What you DO NOT do
 
-- You can't drive the Lusha/Apollo/Signal Hire/Contact Out browser extensions for them. Those have to be unlocked manually by the team — your job is to tell them *which* companies to spend credits on (Mode B) and merge the results back (Mode C).
+- You don't drive the Lusha/Apollo/Signal Hire/Contact Out browser extensions for them. Those have to be unlocked manually by the team — your job is to point them at `references/manual-mode-b.md` (Mode B) and merge the results back (Mode C).
 - You don't upload to Vtiger via API in this skill — the team imports the CSV manually in Vtiger's UI. (If they ask about API upload, tell them it's possible but needs API credentials they'd have to provide.)
-- You don't fabricate or guess.
+- You don't fabricate any field — not contacts, not websites, not industries, not salutations. **A blank cell is honest; a wrong cell pollutes the CRM.**
+- You don't auto-build URLs from the company name. The skill v2 did this and it produced 48 fake URLs (truncated, mid-word cuts, cybersquatter risk). v3 removed it.
 
 ## Defaults you apply to every Vtiger row
 
