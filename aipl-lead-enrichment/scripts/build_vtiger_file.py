@@ -77,10 +77,61 @@ COMMON_FEMALE = {
     'kiran','deepa','preeti','rachna','vandana','aarti','pallavi',
 }
 
+# Industry inference from company-name keywords
+INDUSTRY_KEYWORDS = [
+    ('Financial Services', ['financial','finance','capital','securities','banking','investments','broking','asset','nidhi']),
+    ('Oil & Gas',          ['oil','gas','petroleum','energy','natural gas']),
+    ('Construction & Infra',['construction','builders','infra','realty','cement','steel','engineering','epc']),
+    ('Logistics & Shipping',['logistics','shipping','transport','translogistics','transformers','cargo']),
+    ('Pharmaceuticals',    ['pharma','pharmacle','laboratory','medical','healthcare','medicine','biosciences']),
+    ('Manufacturing',      ['industries','manufactur','chemicals','emulsifiers','oils','fabric','plast']),
+    ('IT & Software',      ['software','technology','tech ','systems','infotech','digital','innovations','edtech']),
+    ('Travel & Hospitality',['travel','hospitality','tours','hotels']),
+    ('Real Estate',        ['real estate','properties','estates','housing']),
+    ('Agriculture',        ['agro','agri','shetkari','krishi','farming','agrovet']),
+    ('Cooperative Society',['sahakari','patsantha','cooperative']),
+]
+
 def _city(d):
     if not d or pd.isna(d):
         return ''
     return CITY_FIXES.get(str(d).strip().upper(), str(d).strip().title())
+
+def _normalize_phone(p):
+    """Normalize Indian phone to +91-XX-XXXX-XXXX or +91-XXXXX-XXXXX (mobile)."""
+    if not p: return ''
+    p = str(p).strip()
+    if not p or p.lower() == 'nan': return ''
+    digits = re.sub(r'[^\d]', '', p)
+    if digits.startswith('91') and len(digits) == 12:
+        return f'+91-{digits[2:4]}-{digits[4:8]}-{digits[8:]}'
+    if len(digits) == 11 and digits.startswith('0'):
+        return f'+91-{digits[1:3]}-{digits[3:7]}-{digits[7:]}'
+    if len(digits) == 10:
+        return f'+91-{digits[:5]}-{digits[5:]}'
+    if len(digits) == 12 and digits.startswith('91'):
+        return f'+91-{digits[2:7]}-{digits[7:]}'
+    return p  # leave unchanged if doesn't fit any known pattern
+
+def _infer_industry(company):
+    """Guess industry from company name keywords."""
+    cl = str(company or '').lower()
+    for industry, kws in INDUSTRY_KEYWORDS:
+        if any(k in cl for k in kws):
+            return industry
+    return 'Other / Diversified'
+
+def _guess_website(company, existing):
+    """If existing website is empty, guess from company-name root."""
+    if existing and str(existing).strip() and str(existing).lower() != 'nan':
+        return existing
+    c = re.sub(r'\bm/s\s+', '', str(company or '').lower())
+    c = re.sub(r'\b(private|pvt|limited|ltd|llp|liability|partnership)\b\.?', '', c)
+    c = re.sub(r'[^\w\s]', '', c).strip()
+    words = [w for w in c.split() if w not in ('the','and','of','india','indian')]
+    if not words: return ''
+    base = ''.join(words[:2])[:20]
+    return f'https://www.{base}.com (unverified guess)' if base else ''
 
 def _salutation(first):
     f = (first or '').strip().lower()
@@ -91,22 +142,46 @@ def _salutation(first):
         return 'Ms.'
     return 'Mr.'
 
-def _map_designation(found):
-    """Map free-text title to one of AIPL's 4 target buckets. Word-boundary safe."""
+def _map_designation(found, has_name=True):
+    """Map free-text title to one of AIPL's 4 IT buckets or a clean Gatekeeper- bucket.
+    Returns (designation, is_it_role, is_default_placeholder).
+    """
     if not found:
-        return ('IT Manager / IT Head', False, True)  # default placeholder for blank
+        # If we have a name but no title, mark unknown gatekeeper. Otherwise placeholder.
+        if has_name:
+            return ('Gatekeeper - Unknown Role', False, False)
+        return ('IT Manager / IT Head', False, True)
     f = found.strip()
     fl = f.lower()
+    # Real IT roles
     if re.search(r'\b(cio|cto|ciso|chief\s+information\s+officer|chief\s+technology\s+officer|vp\s*-?\s*(it|tech|technology|information)|vice\s*president\s*-?\s*(it|tech|technology|information))\b', fl):
         return ('VP IT / CISO / CTO', True, False)
     if re.search(r'\b(it\s*infra|infrastructure\s*(head|manager|lead))\b', fl):
         return ('IT Infra / Sr. IT Infra', True, False)
     if re.search(r'\b(it\s*(procurement|purchase|purchasing)|procurement\s*head|purchase\s*head)\b', fl):
         return ('IT Procurement / Purchase', True, False)
-    if re.search(r'\b(it\s*(head|manager|lead)|head\s*-?\s*it|head\s+of\s+(it|technology|digital)|manager\s*-?\s*it|sr\.?\s*vp\s*&?\s*cio)\b', fl):
+    if re.search(r'\b(it\s*(head|manager|lead)|head\s*-?\s*it|head\s+of\s+(it|technology|digital)|manager\s*-?\s*it|sr\.?\s*vp\s*&?\s*cio|it\s+professional)\b', fl):
         return ('IT Manager / IT Head', True, False)
-    # Non-IT title — keep verbatim, flag as gatekeeper
-    return (f, False, False)
+    # Garbage placeholders that crept in from prior runs
+    if f in ('Care Of (Reg. Address)', 'Contact (role unspecified)', 'Head Office Contact'):
+        return ('Gatekeeper - Unknown Role', False, False)
+    # Clean Gatekeeper buckets (instead of 24 variants of "Chairman/Director/Founder")
+    if 'chairman' in fl and ('md' in fl or 'managing' in fl):
+        return ('Gatekeeper - Chairman & MD', False, False)
+    if 'managing director' in fl or fl == 'md':
+        return ('Gatekeeper - Managing Director', False, False)
+    if 'chairman' in fl:
+        return ('Gatekeeper - Chairman', False, False)
+    if 'ceo' in fl:
+        return ('Gatekeeper - CEO', False, False)
+    if 'founder' in fl:
+        return ('Gatekeeper - Founder', False, False)
+    if 'designated partner' in fl or 'partner' in fl:
+        return ('Gatekeeper - Partner', False, False)
+    if 'director' in fl:
+        return ('Gatekeeper - Director', False, False)
+    # Last resort: keep verbatim under Gatekeeper prefix
+    return (f'Gatekeeper - {f}', False, False)
 
 def _build_row(src, enr):
     """Build one Vtiger row from a source company dict + enrichment dict."""
@@ -140,21 +215,29 @@ def _build_row(src, enr):
     enr = enr or {}
     fn = (enr.get('first') or '').strip()
     ln = (enr.get('last') or '').strip()
+    has_name = bool(fn or ln)
     found_title = (enr.get('designation') or '').strip()
-    mapped_title, is_it_role, is_default = _map_designation(found_title)
+    mapped_title, is_it_role, is_default = _map_designation(found_title, has_name=has_name)
 
     row['Salutation']    = _salutation(fn) if fn else ''
     row['First Name']    = fn
     row['Last Name']     = ln
     row['Designation']   = mapped_title
     row['Primary Email'] = (enr.get('email') or '').strip()
-    row['Office Phone']  = (enr.get('phone') or '').strip()
-    row['Mobile Phone']  = (enr.get('mobile') or '').strip()
-    row['Website']       = (enr.get('website') or '').strip()
+    row['Office Phone']  = _normalize_phone(enr.get('phone'))
+    row['Mobile Phone']  = _normalize_phone(enr.get('mobile'))
+    row['Website']       = _guess_website(row['Company'], enr.get('website'))
+
+    # ---- Marketing-team defaults (so Vtiger doesn't require manual assign) ----
+    row['Industry']        = _infer_industry(row['Company'])
+    row['Lead Handled by'] = 'Marketing Team'
+    row['Assigned To']     = 'Marketing Team'
 
     # ---- Additional Details: stash provenance ----
     details = []
-    if (fn or ln) and not is_it_role and found_title:
+    # Only flag if the title looked IT-like at first glance but didn't match an IT bucket
+    # (mapped_title starts with "Gatekeeper -" already communicates the rest)
+    if (fn or ln) and not is_it_role and found_title and not mapped_title.startswith('Gatekeeper'):
         details.append('ROLE FLAG: Not IT-specific — use as gatekeeper to reach IT decision-maker')
     cin = (enr.get('cin') or '').strip()
     linkedin = (enr.get('linkedin') or '').strip()
@@ -215,35 +298,101 @@ def build_files(companies, enrichment, output_dir='/mnt/user-data/outputs', file
         w.writeheader()
         w.writerows(rows)
 
-    # ---- Coverage report (plain text for the team) ----
-    n = len(rows)
-    named   = sum(1 for r in rows if r['First Name'] or r['Last Name'])
-    emails  = sum(1 for r in rows if r['Primary Email'])
-    phones  = sum(1 for r in rows if r['Office Phone'] or r['Mobile Phone'])
-    sites   = sum(1 for r in rows if r['Website'])
-    it_role = sum(1 for r in rows if r['Designation'] in {
-        'VP IT / CISO / CTO','IT Manager / IT Head',
-        'IT Infra / Sr. IT Infra','IT Procurement / Purchase'
-    } and (r['First Name'] or r['Last Name']))
-    gatekeepers = sum(1 for r in rows if 'ROLE FLAG' in r['Additional Details'])
-    blanks = [r['Company'] for r in rows if not (r['First Name'] or r['Last Name'])]
-
-    with open(rpt_path, 'w', encoding='utf-8') as f:
-        f.write('AIPL Lead Enrichment — Coverage Report\n')
-        f.write(f'Generated: {date.today().strftime("%d %b %Y")}\n')
-        f.write('=' * 60 + '\n\n')
-        f.write(f'Total companies:               {n}\n')
-        f.write(f'Named contacts found:          {named}  ({100*named//n if n else 0}%)\n')
-        f.write(f'  - IT-specific (CIO/IT Head): {it_role}\n')
-        f.write(f'  - Gatekeepers (MD/Director): {gatekeepers}\n')
-        f.write(f'With email:                    {emails}\n')
-        f.write(f'With phone (office or mobile): {phones}\n')
-        f.write(f'With website:                  {sites}\n\n')
-        f.write(f'Still blank ({len(blanks)} companies):\n')
-        for b in blanks:
-            f.write(f'  - {b}\n')
-        if blanks:
-            f.write('\nFor blanks: run Mode B to get a prioritized lookup queue for your\n')
-            f.write('Lusha/Apollo/Signal Hire/Contact Out credits.\n')
+    # ---- Actionable Coverage Report ----
+    _write_actionable_coverage_report(rows, rpt_path)
 
     return {'xlsx': str(xlsx_path), 'csv': str(csv_path), 'report': str(rpt_path)}
+
+
+def _classify_action(r):
+    """Decide what action the team should take for one Vtiger row."""
+    fn = str(r.get('First Name','')).strip()
+    ln = str(r.get('Last Name','')).strip()
+    em = str(r.get('Primary Email','')).strip()
+    ph = str(r.get('Office Phone','')).strip() or str(r.get('Mobile Phone','')).strip()
+    desg = str(r.get('Designation','')).strip()
+    comp_up = str(r.get('Company','')).strip().upper()
+    ad = str(r.get('Additional Details','')).strip()
+
+    has_name = bool(fn or ln)
+    is_it = desg in ('VP IT / CISO / CTO','IT Manager / IT Head','IT Infra / Sr. IT Infra','IT Procurement / Purchase')
+    is_gatekeeper = desg.startswith('Gatekeeper')
+
+    if not has_name:
+        if 'SAHAKARI' in comp_up or 'PATSANTHA' in comp_up:
+            return ('SKIP', 'Cooperative society — not in any tool, accept blank')
+        if 'NIDHI' in comp_up:
+            return ('SKIP', 'Nidhi/NBFC — niche financial, low IT-sales fit')
+        # If a prior research pass already confirmed "NOT_FOUND on aggregators — MCA lookup needed", route there
+        if 'MCA portal' in ad or 'NOT_FOUND' in ad or 'recently incorporated' in ad.lower():
+            return ('MCA_LOOKUP', f'mca.gov.in → "Find CIN" → enter "{str(r["Company"])[:35]}" → pull Director details from CIN master data')
+        return ('CALL_SWITCHBOARD', f'JustDial search for "{str(r["Company"])[:35]} {r.get("City","Mumbai")} switchboard"')
+
+    if is_gatekeeper and not em and not ph:
+        return ('LUSHA', 'Have gatekeeper name only → Lusha credit for phone')
+    if is_gatekeeper and ph and not em:
+        return ('APOLLO', 'Have name + phone, missing email → Apollo/Contact Out credit')
+    if is_gatekeeper and em and ph:
+        return ('CALL_GATEKEEPER', f'Call {fn} {ln} — ask "may I speak to the IT Head?"')
+    if is_it and em and ph:
+        return ('READY', 'Fully enriched IT contact — call directly')
+    if is_it and not em:
+        return ('APOLLO', 'IT-role found, missing email → Apollo credit')
+    if is_it and not ph:
+        return ('LUSHA', 'IT-role found, missing phone → Lusha credit')
+    return ('REVIEW', 'Manual review needed')
+
+
+def _write_actionable_coverage_report(rows, rpt_path):
+    """Per-company next-action report — not just stats."""
+    buckets = {}
+    for r in rows:
+        cat, action = _classify_action(r)
+        buckets.setdefault(cat, []).append((r, action))
+
+    n = len(rows)
+    counts = {k: len(v) for k, v in buckets.items()}
+
+    section_titles = {
+        'READY':            '✓ READY TO CALL DIRECTLY (work these FIRST)',
+        'CALL_GATEKEEPER':  '↻ CALL THE GATEKEEPER, ASK FOR IT HEAD',
+        'CALL_SWITCHBOARD': '☎ COLD-CALL SWITCHBOARD (search JustDial for number first)',
+        'MCA_LOOKUP':       '📋 MCA PORTAL LOOKUP (not on any aggregator — manual CAPTCHA lookup)',
+        'LUSHA':            '💳 USE LUSHA CREDIT (looking for phone)',
+        'APOLLO':           '💳 USE APOLLO CREDIT (looking for email)',
+        'SKIP':             '✗ SKIP — not worth chasing',
+        'REVIEW':           '⚠ NEEDS MANUAL REVIEW',
+    }
+
+    with open(rpt_path, 'w', encoding='utf-8') as f:
+        f.write('AIPL LEAD ENRICHMENT — ACTIONABLE COVERAGE REPORT\n')
+        f.write(f'Generated: {date.today().strftime("%d %b %Y")}\n')
+        f.write('='*70 + '\n\n')
+        f.write(f'SUMMARY ({n} companies):\n')
+        f.write(f'  ✓ Ready to call directly:              {counts.get("READY",0):3d}  (IT contact found, email+phone in hand)\n')
+        f.write(f'  ↻ Call gatekeeper, ask for IT Head:    {counts.get("CALL_GATEKEEPER",0):3d}  (have MD/Director, need IT person)\n')
+        f.write(f'  ☎ Cold-call switchboard via JustDial:  {counts.get("CALL_SWITCHBOARD",0):3d}  (no contact at all - get switchboard #)\n')
+        f.write(f'  📋 MCA portal lookup needed:           {counts.get("MCA_LOOKUP",0):3d}  (not on any aggregator)\n')
+        f.write(f'  💳 Use Lusha credit (phone gap):       {counts.get("LUSHA",0):3d}\n')
+        f.write(f'  💳 Use Apollo credit (email gap):      {counts.get("APOLLO",0):3d}\n')
+        f.write(f'  ✗ Skip (cooperative/NBFC):             {counts.get("SKIP",0):3d}\n')
+        f.write(f'  ⚠ Manual review needed:                {counts.get("REVIEW",0):3d}\n\n')
+
+        for cat in ['READY','CALL_GATEKEEPER','CALL_SWITCHBOARD','MCA_LOOKUP','LUSHA','APOLLO','SKIP','REVIEW']:
+            rs = buckets.get(cat, [])
+            if not rs: continue
+            f.write('-'*70 + '\n')
+            f.write(f'{section_titles[cat]} ({len(rs)} companies)\n')
+            f.write('-'*70 + '\n')
+            for r, action in rs:
+                fn = str(r.get("First Name","")).strip()
+                ln = str(r.get("Last Name","")).strip()
+                name_str = f'{fn} {ln}'.strip() or '(no name)'
+                ph = str(r.get("Office Phone","")).strip() or str(r.get("Mobile Phone","")).strip()
+                ph_str = f' [{ph}]' if ph else ''
+                em = str(r.get("Primary Email","")).strip()
+                em_str = f' <{em}>' if em else ''
+                f.write(f'  • {str(r["Company"])[:55]:<55} → {name_str[:25]:<25} ({str(r["Designation"])[:20]}){ph_str}{em_str}\n')
+                if cat in ('CALL_SWITCHBOARD', 'MCA_LOOKUP'):
+                    f.write(f'      ACTION: {action}\n')
+            f.write('\n')

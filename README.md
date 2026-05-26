@@ -19,18 +19,11 @@ You upload an Excel/CSV of Indian companies. Claude:
 3. Maps everything to the **75-column Vtiger Leads template**
 4. Outputs 3 downloadable files: Excel (review), CSV (Vtiger import), Coverage Report (stats)
 
-### Mode B — Prioritized lookup queue for paid tools
+### Mode B — Manual paid-tool guide
 
-The team uses free tiers of 4 B2B databases. Combined budget is ~65-70 credits/month:
+The team uses free tiers of 4 B2B databases (~65 credits/month total): Lusha (40 — phone), Apollo (10 — IT-role emails), Signal Hire (10 — senior decision-maker bundles), Contact Out (10 — LinkedIn→email).
 
-| Tool | Free credits/month | Best for |
-|---|---:|---|
-| **Lusha** | 40 | Phone numbers (Indian mobile coverage) |
-| **Apollo** | 10 | IT-role emails (bulk-ish) |
-| **Signal Hire** | 5-10 | Senior decision-makers (name + email + phone bundle) |
-| **Contact Out** | 10 | Emails from LinkedIn profiles |
-
-Claude ranks every company in your master file by enrichment value, then outputs a **4-tab Excel** telling the team exactly which companies to look up in which tool — no wasted credits.
+**Mode B is intentionally manual.** Claude can't drive their browser extensions, so we don't pretend to. Instead, the **Actionable Coverage Report** from Mode A already classifies every company into a bucket: READY / CALL_GATEKEEPER / CALL_SWITCHBOARD / USE_LUSHA / USE_APOLLO / SKIP. The team works the report top-to-bottom, using the 1-page decision rule in `references/manual-mode-b.md`. No fancy generated Excel, no wasted credits.
 
 ### Mode C — Merge tool exports back
 
@@ -78,20 +71,17 @@ After the team manually unlocks contacts in their browser tools, they upload the
 5. Download the 3 generated files:
    - `Hygienic_Leads.xlsx` — review in Excel
    - `Hygienic_Leads.csv` — for Vtiger import
-   - `Hygienic_Leads_Coverage_Report.txt` — stats + list of blanks
+   - `Hygienic_Leads_Coverage_Report.txt` — **actionable per-company next-action list**
 
-**Tuesday — generate the lookup queue (Mode B)**
+**Tuesday-Wednesday — work the Coverage Report top to bottom**
 
-1. In the same chat (or new chat with the master file uploaded), type: **"generate the paid-tools lookup queue"**
-2. Download `Lookup_Queue.xlsx` — 4 tabs (one per tool), with rows sorted by priority
+The Coverage Report groups companies into action buckets. Work them in order:
+1. **✓ READY TO CALL DIRECTLY** — IT contact already in hand, just dial
+2. **↻ CALL THE GATEKEEPER** — MD/Director phone in hand, ask for IT Head
+3. **☎ COLD-CALL SWITCHBOARD** — search JustDial for the switchboard #, call, ask for IT
+4. **💳 USE LUSHA / APOLLO CREDIT** — paid-tool unlocks (see `references/manual-mode-b.md` for which tool to use)
 
-**Tuesday-Wednesday — manual tool lookups**
-
-Open each tab and use the browser extensions:
-- Lusha tab → look up those 40 companies in Lusha, export results to CSV
-- Apollo tab → look up those 10, export to CSV
-- Signal Hire tab → look up those 10, export to CSV
-- Contact Out tab → look up those ~10, export to CSV
+Skim the report → for each ☎/💳 row, do the action → export Lusha/Apollo results to CSV.
 
 **Thursday — merge exports back (Mode C)**
 
@@ -122,11 +112,10 @@ AIPL_MARKETING_SKILL/
 │   ├── references/                   # Reference docs (loaded as needed)
 │   │   ├── vtiger-schema.md          # 75-column Vtiger format + defaults
 │   │   ├── enrichment-sources.md     # LinkedIn, Zauba, MCA search patterns
-│   │   ├── credit-allocation.md      # How to spend 65 free credits smartly
+│   │   ├── manual-mode-b.md          # 1-page decision rule for which tool to use
 │   │   └── target-roles.md           # The 4 IT personas + designation mapping
 │   ├── scripts/                      # Python helpers (run in Claude's analysis tool)
-│   │   ├── build_vtiger_file.py      # Mode A — generate Vtiger XLSX + CSV
-│   │   ├── build_lookup_queue.py     # Mode B — prioritize 65 credits across 4 tools
+│   │   ├── build_vtiger_file.py      # Mode A — generate Vtiger XLSX + CSV + Coverage Report
 │   │   └── merge_tool_exports.py     # Mode C — merge Lusha/Apollo/etc. exports
 │   └── assets/
 │       └── vtiger_template_headers.tsv  # Reference column order
