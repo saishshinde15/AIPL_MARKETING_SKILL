@@ -581,7 +581,11 @@ def _classify_action(r):
             return ('SKIP', 'Nidhi/NBFC — niche financial, low IT-sales fit')
         # If a prior research pass already confirmed "NOT_FOUND on aggregators — MCA lookup needed", route there
         if 'MCA portal' in ad or 'NOT_FOUND' in ad or 'recently incorporated' in ad.lower():
-            return ('MCA_LOOKUP', f'mca.gov.in → "Find CIN" → enter "{str(r["Company"])[:35]}" → pull Director details from CIN master data')
+            return ('MCA_LOOKUP',
+                    f'https://www.mca.gov.in/mcafoportal/viewCompanyMasterData.do '
+                    f'→ "Find CIN/LLPIN" → enter "{str(r["Company"])[:60]}" → '
+                    f'CAPTCHA → pull Director details. (Or set AIPL_OPENCORP_KEY '
+                    f'env var to auto-fetch via OpenCorporates free API.)')
         return ('CALL_SWITCHBOARD', f'JustDial search for "{str(r["Company"])[:35]} {r.get("City","Mumbai")} switchboard"')
 
     if is_gatekeeper and not em and not ph:

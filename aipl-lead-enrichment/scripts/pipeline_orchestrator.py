@@ -40,6 +40,13 @@ from build_vtiger_file  import build_files
 from merge_tool_exports import merge_exports
 from local_cache        import Cache
 
+# Optional MCA / OpenCorporates lookup — graceful no-op if no API key set
+try:
+    from mca_lookup import lookup as mca_lookup, available as mca_available
+except ImportError:
+    mca_lookup = None
+    def mca_available(): return False
+
 
 # ---- Intent detection ----------------------------------------------------
 
@@ -153,7 +160,44 @@ def run(input_files, output_dir, enrichment=None, filename_base='Hygienic_Leads'
                          for _, r in df.iterrows()]
         else:
             companies = df.to_dict('records')
-        outputs = build_files(companies, enrichment or {}, output_dir, filename_base)
+
+        enrichment = dict(enrichment or {})
+
+        # ---- v5.2: MCA / OpenCorporates auto-lookup for blanks (if key set) ----
+        # Only runs when AIPL_OPENCORP_KEY env var is present. Free up to 50K/month.
+        if mca_available() and mca_lookup:
+            mca_filled = 0
+            for c in companies:
+                name = str(c.get('EnterpriseName','')).strip()
+                if not name: continue
+                existing = enrichment.get(name, {})
+                # Only call MCA for companies we have ZERO info on
+                if existing.get('first') or existing.get('last') or existing.get('email'):
+                    continue
+                try:
+                    mca = mca_lookup(name)
+                    if mca and mca.get('directors'):
+                        d0 = mca['directors'][0]
+                        full = d0.get('name','').strip().split(' ', 1)
+                        existing.update({
+                            'first':       existing.get('first') or (full[0] if full else ''),
+                            'last':        existing.get('last')  or (full[1] if len(full)>1 else ''),
+                            'designation': existing.get('designation') or d0.get('position',''),
+                            'cin':         existing.get('cin') or mca.get('cin',''),
+                            'source_url':  existing.get('source_url') or mca.get('source_url',''),
+                            'confidence':  existing.get('confidence') or mca.get('confidence','Medium'),
+                            'notes':       ((existing.get('notes','') + ' | ') if existing.get('notes') else '')
+                                            + f"MCA via OpenCorporates: {mca.get('status','')}, "
+                                              f"incorporated {mca.get('incorporation_date','?')}",
+                        })
+                        enrichment[name] = existing
+                        mca_filled += 1
+                except Exception:
+                    pass
+            if mca_filled:
+                summary_lines.append(f"  (MCA auto-lookup filled {mca_filled} previously-blank cos)")
+
+        outputs = build_files(companies, enrichment, output_dir, filename_base)
 
         # Stats
         out_df = pd.read_excel(outputs['xlsx']).fillna('')

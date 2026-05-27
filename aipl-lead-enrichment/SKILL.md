@@ -119,9 +119,9 @@ These sources are public-by-design — companies publish them for the world to c
 - Annual reports the company itself hosts publicly (PDFs on their site)
 - Press releases on company/PR-wire sites
 - Conference speaker bios on event sites
-- MCA bulk data files (Govt of India open data)
 - LinkedIn snippets from regular web search (not LinkedIn's API/scraping)
 - `email_finder.py` — pattern-guess emails for a known person + verified domain, then MX-validate. No PII scraping — just DNS + pattern math.
+- **`mca_lookup.py`** (v5.2) — optional OpenCorporates free-API integration for Indian company registry data. Requires user to sign up for a free key at https://opencorporates.com/api_accounts/new and `export AIPL_OPENCORP_KEY=...`. Without the key, this module silently no-ops. With the key (50K calls/mo free), auto-fills Director names + CINs + addresses + incorporation dates for blank companies the rest of the skill couldn't find. Gracefully handles bad keys (disables itself for the session). NOTE: I originally promised "MCA Bulk Data" as a free magic source — that was wrong. MCA doesn't publish free bulk director data. OpenCorporates is the legit, free, ethical substitute.
 
 ## Defaults you apply to every Vtiger row
 
