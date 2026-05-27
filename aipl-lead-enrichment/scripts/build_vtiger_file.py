@@ -391,7 +391,173 @@ def build_files(companies, enrichment, output_dir='/mnt/user-data/outputs', file
     # ---- Actionable Coverage Report ----
     _write_actionable_coverage_report(rows, rpt_path)
 
-    return {'xlsx': str(xlsx_path), 'csv': str(csv_path), 'report': str(rpt_path)}
+    # ---- v5.1: Mode B Action Sheet (per-tool todo with checkboxes) ----
+    action_path = out_dir / f'{filename_base}_Mode_B_Action_Sheet.md'
+    _write_mode_b_action_sheet(rows, action_path)
+
+    return {
+        'xlsx':         str(xlsx_path),
+        'csv':          str(csv_path),
+        'report':       str(rpt_path),
+        'action_sheet': str(action_path),
+    }
+
+
+def _extract_linkedin(r):
+    """Pull a LinkedIn URL out of Additional Details for the team to click."""
+    ad = str(r.get('Additional Details',''))
+    m = re.search(r'(https?://(?:www\.)?linkedin\.com/[^\s|]+)', ad)
+    return m.group(1) if m else ''
+
+
+def _write_mode_b_action_sheet(rows, path):
+    """
+    Generate the Mode B Action Sheet — a printable per-tool todo list.
+    Removes the 'which tool for which company' decision-making.
+    Each tool gets its own section, prioritized, with LinkedIn URLs pre-filled
+    and checkboxes the team ticks as they unlock each contact.
+
+    Budget: 40 Lusha + 10 Apollo + 10 Signal Hire + 10 Contact Out = 65 credits/mo.
+    """
+    # Score every row and bucket by recommended tool
+    buckets = {'Lusha': [], 'Apollo': [], 'Signal Hire': [], 'Contact Out': [],
+               'Overflow': []}
+    BUDGETS = {'Lusha': 40, 'Apollo': 10, 'Signal Hire': 10, 'Contact Out': 10}
+
+    def assign(r, cat):
+        """Pick the right tool for this row's gap type."""
+        fn = str(r.get('First Name','')).strip()
+        ln = str(r.get('Last Name','')).strip()
+        em = str(r.get('Primary Email','')).strip()
+        ph = str(r.get('Office Phone','')).strip() or str(r.get('Mobile Phone','')).strip()
+        has_name = bool(fn or ln)
+        if cat == 'CALL_GATEKEEPER':
+            # Already have everything — DON'T queue for paid tools
+            return None
+        if cat == 'READY':
+            return None
+        if cat == 'CALL_SWITCHBOARD':
+            # Blank, no info — Lusha for any phone they have
+            return 'Lusha'
+        if cat == 'MCA_LOOKUP':
+            # No web presence — paid tools won't have them either
+            return None
+        if cat == 'LUSHA':
+            return 'Lusha'
+        if cat == 'APOLLO':
+            # If have LinkedIn → Contact Out (LinkedIn→email specialty)
+            if _extract_linkedin(r):
+                return 'Contact Out'
+            return 'Apollo'
+        if cat == 'SKIP':
+            return None
+        # has name + missing both email AND phone → Signal Hire (bundle deal)
+        if has_name and not em and not ph:
+            return 'Signal Hire'
+        return None
+
+    # Sort by score so highest-value go in first
+    SCORE = {'CALL_SWITCHBOARD': 10, 'LUSHA': 8, 'APOLLO': 7, 'MCA_LOOKUP': 0,
+             'CALL_GATEKEEPER': 0, 'READY': 0, 'SKIP': 0, 'REVIEW': 0}
+    scored = []
+    for r in rows:
+        cat, action = _classify_action(r)
+        tool = assign(r, cat)
+        if not tool:
+            continue
+        scored.append({
+            'row':      r,
+            'tool':     tool,
+            'score':    SCORE.get(cat, 0),
+            'reason':   action,
+            'category': cat,
+        })
+    scored.sort(key=lambda x: -x['score'])
+
+    # Fill tools to budget, overflow into 'Overflow'
+    for item in scored:
+        t = item['tool']
+        if len(buckets.get(t, [])) < BUDGETS.get(t, 0):
+            buckets[t].append(item)
+        else:
+            # Try fallback to another tool with capacity
+            placed = False
+            for alt in ['Lusha', 'Apollo', 'Signal Hire', 'Contact Out']:
+                if alt != t and len(buckets[alt]) < BUDGETS[alt]:
+                    item2 = dict(item); item2['tool'] = alt
+                    item2['reason'] = f"(originally {t}; reassigned — {t} full)"
+                    buckets[alt].append(item2)
+                    placed = True
+                    break
+            if not placed:
+                buckets['Overflow'].append(item)
+
+    # ---- Write the Markdown ----
+    with open(path, 'w', encoding='utf-8') as f:
+        f.write('# AIPL Lead Enrichment — Mode B Action Sheet\n')
+        f.write(f'_Generated: {date.today().strftime("%d %b %Y")}_\n\n')
+        f.write('You have **65 free credits** across 4 paid B2B tools this month. ')
+        f.write('Here is exactly which companies to look up where, in priority order. ')
+        f.write('Tick the checkbox as you unlock each contact.\n\n')
+        f.write('---\n\n')
+
+        # Summary banner
+        total_queued = sum(len(buckets[t]) for t in ('Lusha','Apollo','Signal Hire','Contact Out'))
+        f.write(f'**Credit allocation:** ')
+        for t in ('Lusha', 'Apollo', 'Signal Hire', 'Contact Out'):
+            f.write(f'{t}: {len(buckets[t])}/{BUDGETS[t]}  ')
+        f.write(f'  |  **Overflow** (next month): {len(buckets["Overflow"])}\n\n')
+        f.write('---\n\n')
+
+        # Per-tool sections
+        TOOL_NOTES = {
+            'Lusha':       'Best for **Indian mobile numbers**. Use the Chrome extension on LinkedIn profile pages.',
+            'Apollo':      'Best for **IT-role emails at scale**. Search by job title at company.',
+            'Signal Hire': 'Best for **senior decision-maker bundles** (name + email + phone in one unlock).',
+            'Contact Out': 'Best for **email from a known LinkedIn profile**. Paste LI URL into extension.',
+        }
+
+        for tool in ('Lusha', 'Apollo', 'Signal Hire', 'Contact Out'):
+            items = buckets[tool]
+            f.write(f'## {tool} ({len(items)}/{BUDGETS[tool]} credits)\n\n')
+            f.write(f'> {TOOL_NOTES[tool]}\n\n')
+            if not items:
+                f.write('_No companies queued for this tool this run._\n\n')
+                continue
+            for i, item in enumerate(items, 1):
+                r  = item['row']
+                fn = str(r.get('First Name','')).strip()
+                ln = str(r.get('Last Name','')).strip()
+                name = f'{fn} {ln}'.strip() or '_(no name yet)_'
+                comp = str(r.get('Company',''))[:60]
+                city = str(r.get('City',''))
+                desg = str(r.get('Designation',''))
+                li = _extract_linkedin(r)
+                target = item['reason']
+                f.write(f'- [ ] **{i}. {comp}** ({city})\n')
+                f.write(f'      Current contact: {name} — {desg}\n')
+                if li:
+                    f.write(f'      LinkedIn: {li}\n')
+                f.write(f'      What to get: {target}\n\n')
+
+        # Overflow tab
+        if buckets['Overflow']:
+            f.write(f'## Overflow — next month ({len(buckets["Overflow"])} companies)\n\n')
+            f.write('_Out of credits this month. Re-queue for next month_\n\n')
+            for item in buckets['Overflow']:
+                r = item['row']
+                f.write(f'- [ ] {r.get("Company","")[:60]} — needed: {item["reason"]}\n')
+            f.write('\n')
+
+        # Closing instructions
+        f.write('---\n\n')
+        f.write('## When you are done with all 4 tools\n\n')
+        f.write('1. Each tool lets you export your unlocked contacts as CSV. Download all 4.\n')
+        f.write('2. Open a new Claude.ai chat. Upload the 4 CSVs + the master file from today.\n')
+        f.write('3. Type: **"merge these tool exports into the master file"**\n')
+        f.write('4. Claude auto-detects which tool each CSV is from + runs the merge.\n')
+        f.write('5. Download the updated `Hygienic_Leads.csv` and import into Vtiger.\n\n')
+        f.write('Total time: ~1 hour of clicking in browser extensions + 10 min of Claude chat.\n')
 
 
 def _classify_action(r):
