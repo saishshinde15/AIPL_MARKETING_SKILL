@@ -33,8 +33,10 @@ STATE_CANONICAL = {
     'MP': 'Madhya Pradesh', 'MADHYA PRADESH': 'Madhya Pradesh',
 }
 
-# Common Mumbai/Pune/Thane area variants → canonical city
+# v7.1: Expanded city canonical map — covers all major Indian metros
+# (was Mumbai/Pune/Thane only in v6)
 CITY_CANONICAL = {
+    # Mumbai/Pune/Thane region (AIPL's primary territory)
     'NAVI MUMBAI': 'Navi Mumbai', 'MUMBAI CITY': 'Mumbai', 'MUMBAI': 'Mumbai',
     'KALYAN': 'Kalyan', 'KALYAN EAST': 'Kalyan', 'KALYAN WEST': 'Kalyan',
     'PUNE': 'Pune', 'PUNE CITY': 'Pune',
@@ -44,6 +46,22 @@ CITY_CANONICAL = {
     'NERUL': 'Navi Mumbai', 'VIKHROLI': 'Mumbai', 'POWAI': 'Mumbai',
     'ANDHERI': 'Mumbai', 'BORIVALI': 'Mumbai', 'GOREGAON': 'Mumbai',
     'CHEMBUR': 'Mumbai', 'KURLA': 'Mumbai', 'BANDRA': 'Mumbai',
+    # Other major Indian metros (for when AIPL expands)
+    'BENGALURU': 'Bengaluru', 'BANGALORE': 'Bengaluru', 'BLR': 'Bengaluru',
+    'NEW DELHI': 'New Delhi', 'DELHI': 'Delhi',
+    'NOIDA': 'Noida', 'GREATER NOIDA': 'Noida',
+    'GURGAON': 'Gurugram', 'GURUGRAM': 'Gurugram',
+    'CHENNAI': 'Chennai', 'MADRAS': 'Chennai',
+    'HYDERABAD': 'Hyderabad', 'SECUNDERABAD': 'Hyderabad', 'HYD': 'Hyderabad',
+    'KOLKATA': 'Kolkata', 'CALCUTTA': 'Kolkata',
+    'AHMEDABAD': 'Ahmedabad', 'SURAT': 'Surat', 'VADODARA': 'Vadodara',
+    'JAIPUR': 'Jaipur', 'LUCKNOW': 'Lucknow', 'KANPUR': 'Kanpur',
+    'INDORE': 'Indore', 'BHOPAL': 'Bhopal',
+    'COCHIN': 'Kochi', 'KOCHI': 'Kochi', 'ERNAKULAM': 'Kochi',
+    'COIMBATORE': 'Coimbatore', 'MYSORE': 'Mysuru', 'MYSURU': 'Mysuru',
+    'NAGPUR': 'Nagpur', 'NASHIK': 'Nashik', 'AURANGABAD': 'Aurangabad',
+    'GOA': 'Panaji', 'PANAJI': 'Panaji',
+    'CHANDIGARH': 'Chandigarh', 'MOHALI': 'Mohali',
 }
 
 

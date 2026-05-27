@@ -19,30 +19,66 @@ import re
 
 # Canonical → list of acceptable input variants (case-insensitive, whitespace-tolerant)
 CANONICAL_VARIANTS = {
+    # ---- Core company-identity columns (always required) ----
     'EnterpriseName': [
         'enterprisename', 'enterprise name', 'enterprise',
         'company', 'company name', 'companyname',
         'organisation', 'organization', 'organisation name', 'organization name',
         'name', 'name of company', 'name of business', 'name of organization',
         'firm', 'firm name', 'business', 'business name', 'entity', 'entity name',
-        'company/firm', 'co name', 'co. name',
+        'company/firm', 'co name', 'co. name', 'account', 'account name',
     ],
     'Address': [
         'address', 'office address', 'registered address', 'registered office',
         'registered office address', 'address of business', 'business address',
         'street', 'street address', 'location', 'full address', 'reg office',
         'reg. office', 'reg address', 'office', 'building address',
+        'corporate address', 'principal place of business',
     ],
     'State': [
-        'state', 'state name', 'province', 'region',
+        'state', 'state name', 'province', 'region', 'st',
     ],
     'District': [
         'district', 'district name', 'city', 'city name', 'town', 'taluka',
-        'place', 'city/district',
+        'place', 'city/district', 'location city', 'office city',
     ],
     'Pincode': [
         'pincode', 'pin code', 'pin', 'postal code', 'zip', 'zip code',
         'postal', 'postcode', 'zipcode', 'pin no', 'pin number',
+    ],
+    # ---- v7.1: Pre-populated enrichment columns (use as starting point if present) ----
+    'First Name': [
+        'first name', 'firstname', 'fname', 'given name', 'contact first name',
+        'first', 'contact name',
+    ],
+    'Last Name': [
+        'last name', 'lastname', 'lname', 'surname', 'family name',
+        'contact last name', 'last',
+    ],
+    'Designation': [
+        'designation', 'title', 'job title', 'role', 'position',
+        'job role', 'contact title',
+    ],
+    'Primary Email': [
+        'email', 'email address', 'primary email', 'work email', 'business email',
+        'mail', 'e-mail', 'contact email', 'email id', 'official email',
+    ],
+    'Office Phone': [
+        'phone', 'office phone', 'work phone', 'business phone', 'landline',
+        'tel', 'telephone', 'switchboard', 'contact number', 'phone number',
+        'office number',
+    ],
+    'Mobile Phone': [
+        'mobile', 'mobile phone', 'mobile number', 'cell', 'cell phone',
+        'cellphone', 'direct dial', 'direct phone', 'whatsapp', 'mob',
+    ],
+    'Website': [
+        'website', 'web', 'url', 'site', 'web site', 'company website',
+        'homepage', 'web address',
+    ],
+    'Industry': [
+        'industry', 'sector', 'segment', 'industry segment', 'business sector',
+        'vertical',
     ],
 }
 

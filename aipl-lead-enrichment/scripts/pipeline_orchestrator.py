@@ -191,6 +191,57 @@ def run(input_files, output_dir, enrichment=None, filename_base='Hygienic_Leads'
             df, changes = sanitize_dataframe(df)
             if changes:
                 summary_lines.append(f"(Sanitized {changes} cells: pincodes, addresses, typos)")
+
+        # ---- v7.1: Dedupe by normalized company name ----
+        import re as _re
+        def _normkey(s):
+            s = _re.sub(r'\bm/s\s+', '', str(s or '').upper())
+            for sfx in ['PRIVATE LIMITED','PVT LTD','PVT. LTD','PVT LIMITED',
+                        'LIMITED',' LTD',' LLP','LIABILITY PARTNERSHIP']:
+                s = s.replace(sfx, ' ')
+            return _re.sub(r'\s+', ' ', s).strip()
+        if 'EnterpriseName' in df.columns:
+            df['_dedup_key'] = df['EnterpriseName'].apply(_normkey)
+            before = len(df)
+            df = df.drop_duplicates(subset=['_dedup_key'], keep='first').drop(columns=['_dedup_key']).reset_index(drop=True)
+            if len(df) < before:
+                summary_lines.append(f"(Deduped {before - len(df)} duplicate company rows)")
+
+        # ---- v7.1: Harvest pre-populated enrichment columns into enrichment dict ----
+        # If input ALREADY has Phone/Email/Name columns filled, use that as trusted
+        # starting data — skill only researches genuine blanks.
+        enrichment = dict(enrichment or {})
+        existing_cols = set(df.columns)
+        enrichable_fields = {
+            'First Name':    'first',
+            'Last Name':     'last',
+            'Designation':   'designation',
+            'Primary Email': 'email',
+            'Office Phone':  'phone',
+            'Mobile Phone':  'mobile',
+            'Website':       'website',
+            'Industry':      'industry',
+        }
+        harvested = 0
+        for _, row in df.iterrows():
+            name = str(row.get('EnterpriseName','')).strip()
+            if not name:
+                continue
+            existing_enr = enrichment.get(name, {})
+            row_data = {}
+            for col, key in enrichable_fields.items():
+                if col in existing_cols:
+                    val = str(row[col]).strip()
+                    if val and val.lower() != 'nan' and not existing_enr.get(key):
+                        row_data[key] = val
+            if row_data:
+                row_data.setdefault('source_url', 'Provided in input file')
+                row_data.setdefault('confidence', 'High')  # input data trusted
+                row_data.setdefault('notes', 'From input file (preserved as-is)')
+                enrichment[name] = {**existing_enr, **row_data}
+                harvested += 1
+        if harvested:
+            summary_lines.append(f"(Used pre-populated data from {harvested} input rows — skill researched only the blanks)")
         # Build companies list (use Vtiger row schema if master, else source schema)
         if classification[src_path] == 'master_vtiger':
             companies = [{'EnterpriseName': r.get('Company',''),
