@@ -235,6 +235,22 @@ def _build_row(src, enr):
     row['Mobile Phone']  = _normalize_phone(enr.get('mobile'))
     row['Website']       = _clean_website(enr.get('website'))
 
+    # ---- Auto-fill missing email via permutation + MX validation ----
+    # Only fires when we have a name + a verified website but no email.
+    # Pure Python, zero LLM calls, ~1 sec per company.
+    if has_name and not row['Primary Email'] and row['Website']:
+        try:
+            from email_finder import find_email
+            r = find_email(fn, ln, row['Website'])
+            if r and r.get('email') and r.get('mx_ok'):
+                row['Primary Email'] = r['email']
+                # Stash provenance so the team knows this is MX-validated not verified
+                enr = dict(enr)
+                enr['notes'] = ((enr.get('notes') or '') +
+                    f" | Email auto-derived: {r['method']}").strip(' |')
+        except Exception:
+            pass  # never fail the build over an enrichment helper
+
     # ---- Marketing-team defaults (so Vtiger doesn't require manual assign) ----
     row['Industry']        = _infer_industry(row['Company'])
     row['Lead Handled by'] = 'Marketing Team'

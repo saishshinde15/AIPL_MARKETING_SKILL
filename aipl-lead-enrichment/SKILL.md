@@ -36,10 +36,11 @@ The user can ask for any of three things. Detect which from context:
 1. Read the file. Confirm columns include something like `EnterpriseName` / `Company`, plus address fields. If unclear, ask once.
 2. For each company, run enrichment in this order (stop at first success):
    - **a) Web search for IT-specific contact** — search LinkedIn snippets, company sites, news for CIO/CTO/IT Head names. Read `references/enrichment-sources.md` for query patterns.
-   - **b) Fallback to MCA filings** — search Zauba Corp / Tofler for Director/MD name + registered email + CIN. Read `references/enrichment-sources.md`.
-   - **c) Fallback to company switchboard** — find website + main office phone from JustDial / IndiaMart / company site.
+   - **b) Fallback to MCA filings** — read public Zauba Corp / Tofler pages for Director/MD name + registered email + CIN. Read `references/enrichment-sources.md`.
+   - **c) Fallback to company website + switchboard** — visit the company's own site (Contact / About / Team pages), pull office phone + info@ email. Do not scrape JustDial / IndiaMART (see "What you DO NOT do").
 3. Pull each company's address fields and map to Vtiger schema (see `references/vtiger-schema.md`).
 4. Use `scripts/build_vtiger_file.py` in the analysis tool to generate the final files.
+   - **v4 auto-fill**: when a company has a name + verified website but no email, `build_vtiger_file.py` automatically calls `email_finder.py` to try the 8 most common patterns (`first.last@`, `flast@`, etc.) and validate the domain has an MX record. The result is tagged Medium confidence and stamped in `Additional Details`. ~20% email coverage gain, zero LLM cost.
 5. Output **three artifacts** the user can download:
    - `Hygienic_Leads.xlsx` — for human review (bold headers, frozen top row)
    - `Hygienic_Leads.csv` — comma-CSV for Vtiger import
@@ -91,6 +92,19 @@ If the user asks "which tool for company X?", consult the table in `manual-mode-
 - You don't upload to Vtiger via API in this skill — the team imports the CSV manually in Vtiger's UI. (If they ask about API upload, tell them it's possible but needs API credentials they'd have to provide.)
 - You don't fabricate any field — not contacts, not websites, not industries, not salutations. **A blank cell is honest; a wrong cell pollutes the CRM.**
 - You don't auto-build URLs from the company name. The skill v2 did this and it produced 48 fake URLs (truncated, mid-word cuts, cybersquatter risk). v3 removed it.
+- **You don't scrape IndiaMART, JustDial, Tofler, Zauba premium, or Google search results.** All of these explicitly forbid automated scraping in their ToS, and harvesting contact PII from them runs afoul of India's DPDP Act 2023. v4 was originally going to add these — we explicitly chose not to. The right way to close the phone/email gap they cover is for the team to pay ₹4K/month for Lusha (which has the licensed data legally).
+
+## What you CAN ethically use
+
+These sources are public-by-design — companies publish them for the world to consume. Safe to use:
+
+- The company's own website (Contact Us, About, Team pages) — published for public consumption
+- Annual reports the company itself hosts publicly (PDFs on their site)
+- Press releases on company/PR-wire sites
+- Conference speaker bios on event sites
+- MCA bulk data files (Govt of India open data)
+- LinkedIn snippets from regular web search (not LinkedIn's API/scraping)
+- `email_finder.py` — pattern-guess emails for a known person + verified domain, then MX-validate. No PII scraping — just DNS + pattern math.
 
 ## Defaults you apply to every Vtiger row
 
