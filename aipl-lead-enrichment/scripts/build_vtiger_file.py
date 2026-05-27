@@ -446,6 +446,14 @@ def build_files(companies, enrichment, output_dir='/mnt/user-data/outputs', file
     except ImportError:
         emails_path = None
 
+    # ---- v6 finish: Top-20 Lead Briefs (1-pager per Hot lead) ----
+    briefs_path = out_dir / f'{filename_base}_Lead_Briefs.md'
+    try:
+        from lead_brief import write_briefs_file
+        write_briefs_file(rows, str(briefs_path), top_n=20)
+    except ImportError:
+        briefs_path = None
+
     result = {
         'xlsx':         str(xlsx_path),
         'csv':          str(csv_path),
@@ -456,6 +464,8 @@ def build_files(companies, enrichment, output_dir='/mnt/user-data/outputs', file
         result['phone_scripts'] = str(scripts_path)
     if emails_path:
         result['email_templates'] = str(emails_path)
+    if briefs_path:
+        result['lead_briefs'] = str(briefs_path)
     return result
 
 

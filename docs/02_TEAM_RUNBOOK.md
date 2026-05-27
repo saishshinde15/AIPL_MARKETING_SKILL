@@ -26,11 +26,14 @@ If any of these are missing, ping the contractor before starting.
 4. Wait. Claude will research each company (~10-30 min depending on list size).
 5. When done, Claude will show a summary like:
    > ✅ 73/93 contacts found (78%). Files ready to download.
-6. **Download all 4 files:**
-   - `Hygienic_Leads.xlsx` — for review
+6. **Download all 7 files (v6.0):**
+   - `Hygienic_Leads.xlsx` — for review (now includes Hot/Warm/Cold priority column)
    - `Hygienic_Leads.csv` — for Vtiger import (don't open in Excel before importing!)
-   - `Hygienic_Leads_Coverage_Report.txt` — read this
-   - `Hygienic_Leads_Mode_B_Action_Sheet.md` — **your todo for Tuesday**
+   - `Hygienic_Leads_Coverage_Report.txt` — per-company action plan
+   - `Hygienic_Leads_Mode_B_Action_Sheet.md` — paid-tool todo (skip if not using Lusha/Apollo)
+   - **`Hygienic_Leads_Phone_Scripts.md`** ⭐ — personalized 30-sec scripts per contact, sorted Hot→Cold
+   - **`Hygienic_Leads_Email_Templates.md`** ⭐ — ready-to-send emails per contact-with-email
+   - **`Hygienic_Leads_Lead_Briefs.md`** ⭐ — 1-page sales kit for top 20 Hot leads
 
 ---
 

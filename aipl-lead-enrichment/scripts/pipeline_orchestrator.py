@@ -54,6 +54,20 @@ try:
 except ImportError:
     _HAS_SCHEMA_DETECTOR = False
 
+# v6: data sanitization — fixes typos, pincodes, addresses, state names
+try:
+    from data_sanitizer import sanitize_dataframe
+    _HAS_DATA_SANITIZER = True
+except ImportError:
+    _HAS_DATA_SANITIZER = False
+
+# v6: company classifier — Pvt Ltd / LLP / Cooperative / Nidhi / etc.
+try:
+    from company_classifier import classify as classify_company
+    _HAS_COMPANY_CLASSIFIER = True
+except ImportError:
+    _HAS_COMPANY_CLASSIFIER = False
+
 
 # ---- Intent detection ----------------------------------------------------
 
@@ -171,6 +185,12 @@ def run(input_files, output_dir, enrichment=None, filename_base='Hygienic_Leads'
                 if w.startswith('❌'):
                     return {'intent': intent, 'classification': classification, 'outputs': {},
                             'summary': w, 'next_action': 'Add the missing column to your file and re-upload.'}
+
+        # v6: sanitize cells (typos like "PR IVA TE", pincode .0 suffix, state abbreviations)
+        if _HAS_DATA_SANITIZER:
+            df, changes = sanitize_dataframe(df)
+            if changes:
+                summary_lines.append(f"(Sanitized {changes} cells: pincodes, addresses, typos)")
         # Build companies list (use Vtiger row schema if master, else source schema)
         if classification[src_path] == 'master_vtiger':
             companies = [{'EnterpriseName': r.get('Company',''),

@@ -30,15 +30,19 @@ AIPL's marketing team was spending ~24 person-hours/week researching IT decision
 
 ---
 
-## What it does in plain English
+## What it does in plain English (v6.0)
 
 The marketing team uploads a list of Indian companies. The skill:
 
 1. **Researches** each company on LinkedIn, Zauba Corp, MCA filings, company website — finds the IT Head / CTO / IT Manager / Director name + email + phone
 2. **Formats** results into a 75-column Vtiger-ready CSV — auto-applies AIPL's standard defaults (Lead Source = Master DB, Status = Prospect, Currency = INR, etc.)
-3. **Generates a per-company Action Plan** — tells the team exactly which 40 companies to look up in Lusha, which 10 in Apollo, etc. — so the 65 free monthly credits across paid tools get spent on the right companies
-4. **Caches every verified contact locally** — so re-runs are instant (1 second vs 30 minutes the first time). Over 12 months AIPL builds a first-party Indian SME contact database worth more than a Lusha subscription.
-5. **Auto-merges paid-tool exports back** — when the team unlocks contacts in Lusha/Apollo, the skill auto-detects the export format and updates the master file without overwriting verified data.
+3. **Auto-tags every row Hot / Warm / Cold / Skip** based on company size + industry fit + contact role + data completeness. Team works Hot leads first.
+4. **Generates personalized cold-call scripts** per contact — industry-tailored + role-aware + with built-in objection handlers. The team walks into the call ready, no improvisation.
+5. **Generates personalized cold-email templates** per contact with email — industry-tailored subject + body, ready to copy-paste-send.
+6. **Generates 1-page sales-execution briefs** for the top 20 Hot leads — company snapshot + best contact + suggested channel + inline script + inline email + verification sources.
+7. **Auto-handles messy input** — fixes typos like "PR IVA TE" → "PRIVATE", normalizes state abbreviations (MH→Maharashtra), strips Excel pincode .0 suffixes, accepts 50+ column-name variants without breaking.
+8. **Classifies each company by legal type** — routes Cooperatives and Nidhis to "Skip" automatically (low IT-spend), routes Listed Public Ltd to enhanced research (annual reports, BSE/NSE).
+9. **Caches every verified contact locally** — builds a first-party Indian SME contact DB over time.
 
 ---
 

@@ -4,6 +4,39 @@ All notable changes to this skill. Following [Keep a Changelog](https://keepacha
 
 ---
 
+## [v6.0] — 2026-05-27
+
+### Added — Sales enablement layer (the "different product" pitch)
+- **`sales_priority.py`** — Hot/Warm/Cold/Skip scoring per row (35-point scale: size + industry + role + data completeness). Stamped into Vtiger `Source Campaign` field.
+- **`cold_call_scripts.py`** — Per-company 30-second phone scripts. 12 role-specific opener templates × 10 industry value props. Switchboard script for blank rows. 4 objection handlers per call.
+- **`email_templates.py`** — Per-contact-with-email 4-line cold-email templates. Industry-tailored subjects + bodies. Ready to copy-paste-send.
+- **`lead_brief.py`** — Top-20 1-page sales-execution kits per Hot lead. Company snapshot + best contact + recommended channel + inline phone script + inline email + sources. Print-ready Markdown.
+
+### Added — Robustness layer (handles inconsistent input)
+- **`schema_detector.py`** — Auto-detects 50+ column name variants. Maps `Company`/`EnterpriseName`/`Organization`/etc. to canonical schema.
+- **`data_sanitizer.py`** — Fixes pincode .0 suffix, state abbreviations, "PR IVA TE" typos, multi-space collapse, address newline cleanup. Tested: 211 cells auto-sanitized on AIPL's 93-co list.
+- **`company_classifier.py`** — Classifies each company: Pvt Ltd / Public Ltd / LLP / Cooperative / Nidhi / Producer Co / OPC / Section 8 / Partnership. Routes each type to appropriate research strategy (skip Cooperatives, enhanced research for listed Public Ltd, etc.).
+
+### Changed
+- `build_files()` now emits 7 artifacts (was 4): XLSX + CSV + Coverage_Report + Action_Sheet + Phone_Scripts + Email_Templates + Lead_Briefs.
+- Every Vtiger row stamped with Hot/Warm/Cold tag in Source Campaign field.
+- `pipeline_orchestrator` auto-runs schema detection + data sanitization on every input file.
+
+### Tested on AIPL's 93-co list
+- 211 cells auto-sanitized (pincodes, state abbreviations, address whitespace)
+- Priority: 6 Hot / 56 Warm / 26 Cold / 5 Skip
+- 72 phone scripts generated
+- 50 email templates generated
+- Top 20 Lead Briefs generated
+- Run time: ~2 seconds end-to-end on cached data
+
+### THE PITCH FOR AIPL (vs Apollo+Lusha)
+Apollo+Lusha give you raw contact data for ₹10K/mo. v6 gives you contact data
+PLUS personalized phone scripts PLUS personalized emails PLUS Hot/Warm/Cold
+prioritization PLUS top-20 lead briefs — for ₹1,700/mo. Different product.
+
+---
+
 ## [v5.2] — 2026-05-27
 
 ### Added
