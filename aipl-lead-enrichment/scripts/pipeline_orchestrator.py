@@ -47,6 +47,13 @@ except ImportError:
     mca_lookup = None
     def mca_available(): return False
 
+# v6: schema normalization — handles weird column names in input files
+try:
+    from schema_detector import normalize_dataframe
+    _HAS_SCHEMA_DETECTOR = True
+except ImportError:
+    _HAS_SCHEMA_DETECTOR = False
+
 
 # ---- Intent detection ----------------------------------------------------
 
@@ -152,6 +159,18 @@ def run(input_files, output_dir, enrichment=None, filename_base='Hygienic_Leads'
                         if kind in ('source_list', 'master_vtiger'))
         df = pd.read_excel(src_path) if src_path.lower().endswith('.xlsx') else pd.read_csv(src_path)
         df = df.fillna('')
+
+        # v6: auto-normalize variable column names (Company/EnterpriseName/etc.)
+        if _HAS_SCHEMA_DETECTOR and classification[src_path] == 'source_list':
+            df, mapping, sch_warnings = normalize_dataframe(df)
+            if mapping:
+                rename_msg = '; '.join(f"'{k}'→{v}" for k,v in mapping.items() if k != v)
+                if rename_msg:
+                    summary_lines.append(f"(Auto-renamed input columns: {rename_msg})")
+            for w in sch_warnings:
+                if w.startswith('❌'):
+                    return {'intent': intent, 'classification': classification, 'outputs': {},
+                            'summary': w, 'next_action': 'Add the missing column to your file and re-upload.'}
         # Build companies list (use Vtiger row schema if master, else source schema)
         if classification[src_path] == 'master_vtiger':
             companies = [{'EnterpriseName': r.get('Company',''),

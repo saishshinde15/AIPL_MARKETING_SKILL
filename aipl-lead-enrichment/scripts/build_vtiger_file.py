@@ -388,6 +388,41 @@ def build_files(companies, enrichment, output_dir='/mnt/user-data/outputs', file
         w.writeheader()
         w.writerows(rows)
 
+    # ---- v6: Sales priority tagging (Hot/Warm/Cold) ----
+    try:
+        from sales_priority import score as _priority_score
+        for r in rows:
+            tier, reason = _priority_score(r)
+            r['Source Campaign'] = tier  # stamp priority in Vtiger col
+            # Append reason to Additional Details
+            existing_ad = r.get('Additional Details', '')
+            r['Additional Details'] = (
+                (existing_ad + ' | ' if existing_ad else '') +
+                f"Priority: {tier} ({reason})"
+            ).strip(' |')
+    except ImportError:
+        pass  # v5 fallback — skill works without sales_priority
+
+    # Re-write XLSX + CSV with the priority stamps
+    # (the xlsx/csv above were written WITHOUT Source Campaign — overwrite now)
+    wb2 = Workbook()
+    ws2 = wb2.active
+    ws2.title = 'Vtiger_Leads'
+    ws2.append(VTIGER_HEADERS)
+    for cell in ws2[1]:
+        cell.font = Font(bold=True)
+    for r in rows:
+        ws2.append([r.get(h, '') for h in VTIGER_HEADERS])
+    for ci, h in enumerate(VTIGER_HEADERS, 1):
+        col_letter = ws2.cell(row=1, column=ci).column_letter
+        ws2.column_dimensions[col_letter].width = min(max(len(h) + 2, 12), 50)
+    ws2.freeze_panes = 'A2'
+    wb2.save(xlsx_path)
+    with open(csv_path, 'w', encoding='utf-8', newline='') as f:
+        w = csv.DictWriter(f, fieldnames=VTIGER_HEADERS, delimiter=',', quoting=csv.QUOTE_ALL)
+        w.writeheader()
+        w.writerows(rows)
+
     # ---- Actionable Coverage Report ----
     _write_actionable_coverage_report(rows, rpt_path)
 
@@ -395,12 +430,33 @@ def build_files(companies, enrichment, output_dir='/mnt/user-data/outputs', file
     action_path = out_dir / f'{filename_base}_Mode_B_Action_Sheet.md'
     _write_mode_b_action_sheet(rows, action_path)
 
-    return {
+    # ---- v6: Cold-call phone scripts ----
+    scripts_path = out_dir / f'{filename_base}_Phone_Scripts.md'
+    try:
+        from cold_call_scripts import write_scripts_file
+        write_scripts_file(rows, str(scripts_path))
+    except ImportError:
+        scripts_path = None
+
+    # ---- v6: Email outreach templates ----
+    emails_path = out_dir / f'{filename_base}_Email_Templates.md'
+    try:
+        from email_templates import write_emails_file
+        write_emails_file(rows, str(emails_path))
+    except ImportError:
+        emails_path = None
+
+    result = {
         'xlsx':         str(xlsx_path),
         'csv':          str(csv_path),
         'report':       str(rpt_path),
         'action_sheet': str(action_path),
     }
+    if scripts_path:
+        result['phone_scripts'] = str(scripts_path)
+    if emails_path:
+        result['email_templates'] = str(emails_path)
+    return result
 
 
 def _extract_linkedin(r):

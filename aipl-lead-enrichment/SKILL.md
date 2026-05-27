@@ -57,11 +57,15 @@ The user can ask for any of three things. Detect which from context:
 4. Use `scripts/build_vtiger_file.py` in the analysis tool to generate the final files.
    - **v4 auto-fill**: when a company has a name + verified website but no email, `build_vtiger_file.py` automatically calls `email_finder.py` to try the 8 most common patterns (`first.last@`, `flast@`, etc.) and validate the domain has an MX record. The result is tagged Medium confidence and stamped in `Additional Details`. ~20% email coverage gain, zero LLM cost.
    - **v5 cache flywheel**: `build_vtiger_file.py` automatically checks `local_cache.py` (a per-user SQLite DB at `~/.aipl-cache/contacts.db`) for every company. Cache hits return in milliseconds — 30 min cold run → 1 sec on repeat. Every fresh contact found is saved back. After 6 months of weekly runs, AIPL has a first-party Indian SME contact DB no paid tool has. Contacts older than 180 days are flagged stale (job changes happen) and the skill should refresh them on the next pass. The cache also auto-learns email patterns per domain (e.g., once we confirm `pankaj.purohit@motilaloswal.com`, the cache knows Motilal Oswal uses `first.last@`, applies to other contacts at the same company).
-5. Output **four artifacts** the user can download:
+5. Output **six artifacts** the user can download (v6.0):
    - `Hygienic_Leads.xlsx` — for human review (bold headers, frozen top row)
    - `Hygienic_Leads.csv` — comma-CSV for Vtiger import
    - `Hygienic_Leads_Coverage_Report.txt` — per-company actionable next-step plan
-   - **`Hygienic_Leads_Mode_B_Action_Sheet.md`** — printable per-tool todo list with checkboxes. Tells the team EXACTLY which 65 companies to look up in which paid tool, in priority order, with LinkedIn URLs pre-filled. Removes the manual "which tool for which company" decision-making. **This is the v5.1 replacement for the old Mode B Excel** — much lighter, actually used by the team.
+   - `Hygienic_Leads_Mode_B_Action_Sheet.md` — printable per-tool todo. (legacy — only useful if team still uses Lusha/Apollo extensions. Most AIPL deployments ignore this file.)
+   - **`Hygienic_Leads_Phone_Scripts.md`** (v6) — personalized 30-sec cold-call scripts per company. Industry + role + city tailored. Includes objection handlers. Sorted Hot → Warm → Cold by sales priority.
+   - **`Hygienic_Leads_Email_Templates.md`** (v6) — personalized 4-line cold-email templates for every contact with a verified email. Subject + body ready to copy-paste-send. Industry-specific value props baked in.
+
+   Each row also gets a **Hot / Warm / Cold / Skip** tag in the Vtiger `Source Campaign` field (v6 sales priority scorer). Team sorts by priority before outreach.
 
 ### Mode B — "Which paid tool should I use for which company?"
 **Trigger:** User asks "which companies should I look up?", "prioritize my Lusha/Apollo credits", "lookup queue".
