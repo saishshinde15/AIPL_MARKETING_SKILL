@@ -4,6 +4,8 @@ A Claude **Skill** that automates B2B lead enrichment for AIPL's marketing team.
 
 Built for **non-technical users on the Claude.ai $20 Pro plan**. No Terminal, no Python installs, no API keys. Just upload, chat, download.
 
+> 📚 **Full handoff documentation in [`docs/`](docs/)** — Leadership brief, team runbook, Loom video script, troubleshooting guide, changelog.
+
 ---
 
 ## What this skill does
