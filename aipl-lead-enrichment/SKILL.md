@@ -41,6 +41,7 @@ The user can ask for any of three things. Detect which from context:
 3. Pull each company's address fields and map to Vtiger schema (see `references/vtiger-schema.md`).
 4. Use `scripts/build_vtiger_file.py` in the analysis tool to generate the final files.
    - **v4 auto-fill**: when a company has a name + verified website but no email, `build_vtiger_file.py` automatically calls `email_finder.py` to try the 8 most common patterns (`first.last@`, `flast@`, etc.) and validate the domain has an MX record. The result is tagged Medium confidence and stamped in `Additional Details`. ~20% email coverage gain, zero LLM cost.
+   - **v5 cache flywheel**: `build_vtiger_file.py` automatically checks `local_cache.py` (a per-user SQLite DB at `~/.aipl-cache/contacts.db`) for every company. Cache hits return in milliseconds — 30 min cold run → 1 sec on repeat. Every fresh contact found is saved back. After 6 months of weekly runs, AIPL has a first-party Indian SME contact DB no paid tool has. Contacts older than 180 days are flagged stale (job changes happen) and the skill should refresh them on the next pass. The cache also auto-learns email patterns per domain (e.g., once we confirm `pankaj.purohit@motilaloswal.com`, the cache knows Motilal Oswal uses `first.last@`, applies to other contacts at the same company).
 5. Output **three artifacts** the user can download:
    - `Hygienic_Leads.xlsx` — for human review (bold headers, frozen top row)
    - `Hygienic_Leads.csv` — comma-CSV for Vtiger import

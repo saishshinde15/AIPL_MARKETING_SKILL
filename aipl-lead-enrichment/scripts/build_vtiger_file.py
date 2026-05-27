@@ -275,6 +275,70 @@ def _build_row(src, enr):
     row['Additional Details'] = ' | '.join(details)
     return row
 
+def _merge_cache_into_enrichment(companies, enrichment):
+    """
+    For each company, check the local SQLite cache. If we have a higher-confidence
+    contact cached (from prior runs or team-verified), use it. Otherwise, when
+    fresh enrichment is provided, save it back to the cache.
+
+    This is the FLYWHEEL: every run improves future runs.
+    """
+    try:
+        from local_cache import Cache
+        cache = Cache()
+    except Exception:
+        return enrichment  # cache optional; never fail the build
+
+    CONF_RANK = {'High': 0, 'Medium': 1, 'Low': 2, '': 3, None: 3}
+    merged = dict(enrichment or {})
+
+    for src in companies:
+        name = str(src.get('EnterpriseName') or src.get('Company') or '').strip()
+        if not name:
+            continue
+        hit = cache.lookup_company(name)
+        fresh = merged.get(name, {}) or {}
+
+        if hit and hit.get('best'):
+            cached = hit['best']
+            # If cached contact is higher-confidence than fresh, prefer cached.
+            # If fresh is higher-confidence (or cached is stale), prefer fresh + save back.
+            fresh_conf  = CONF_RANK.get((fresh.get('confidence') or '').title(), 3)
+            cached_conf = CONF_RANK.get((cached.get('confidence') or '').title(), 3)
+            if (cached_conf < fresh_conf) or (cached_conf == fresh_conf and not cached.get('is_stale')):
+                # Use cache — fill empties in fresh from cached
+                merged[name] = {
+                    'first':       fresh.get('first')       or cached.get('first_name', ''),
+                    'last':        fresh.get('last')        or cached.get('last_name', ''),
+                    'designation': fresh.get('designation') or cached.get('designation', ''),
+                    'email':       fresh.get('email')       or cached.get('email', ''),
+                    'phone':       fresh.get('phone')       or cached.get('phone', ''),
+                    'mobile':      fresh.get('mobile')      or cached.get('mobile', ''),
+                    'website':     fresh.get('website')     or hit['company'].get('website', ''),
+                    'linkedin':    fresh.get('linkedin')    or cached.get('linkedin', ''),
+                    'source_url':  fresh.get('source_url')  or cached.get('source_url', ''),
+                    'confidence':  cached.get('confidence', ''),
+                    'cin':         fresh.get('cin')         or hit['company'].get('cin', ''),
+                    'notes':       ((fresh.get('notes','') + ' | ' if fresh.get('notes') else '') +
+                                    f"Cache hit ({cached.get('days_old',0)}d old, "
+                                    f"{cached.get('confidence','?')} conf)").strip(' |'),
+                }
+
+        # Save fresh enrichment back to cache for future runs (if we have a name)
+        if fresh and (fresh.get('first') or fresh.get('last') or fresh.get('email')):
+            cache.save_company(name,
+                website=fresh.get('website',''),
+                city=str(src.get('District') or src.get('City') or ''),
+                state=str(src.get('State','')),
+                address=str(src.get('Address','')),
+                pincode=str(src.get('Pincode','')),
+            )
+            cache.save_contact(name, fresh)
+
+    cache.close()
+    return merged
+
+
 def build_files(companies, enrichment, output_dir='/mnt/user-data/outputs', filename_base='Hygienic_Leads'):
     """
     Build all three output files.
@@ -293,6 +357,9 @@ def build_files(companies, enrichment, output_dir='/mnt/user-data/outputs', file
     xlsx_path = out_dir / f'{filename_base}.xlsx'
     csv_path  = out_dir / f'{filename_base}.csv'
     rpt_path  = out_dir / f'{filename_base}_Coverage_Report.txt'
+
+    # ---- Cache flywheel: merge with prior verified contacts + save fresh ones ----
+    enrichment = _merge_cache_into_enrichment(companies, enrichment)
 
     rows = []
     for src in companies:
