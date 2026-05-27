@@ -31,6 +31,7 @@ USAGE (from within a Claude analysis tool block):
     # Returns: {"xlsx": "...", "csv": "...", "report": "..."}
 """
 import csv
+import os
 import re
 from datetime import date
 from pathlib import Path
@@ -426,9 +427,13 @@ def build_files(companies, enrichment, output_dir='/mnt/user-data/outputs', file
     # ---- Actionable Coverage Report ----
     _write_actionable_coverage_report(rows, rpt_path)
 
-    # ---- v5.1: Mode B Action Sheet (per-tool todo with checkboxes) ----
-    action_path = out_dir / f'{filename_base}_Mode_B_Action_Sheet.md'
-    _write_mode_b_action_sheet(rows, action_path)
+    # ---- Optional: paid-tool Action Sheet (default OFF — AIPL works Claude-only) ----
+    # Only generated if env var AIPL_ENABLE_PAID_TOOLS=1 is set (e.g., if AIPL ever
+    # decides to bring back Lusha/Apollo/Signal Hire/Contact Out paid tools).
+    action_path = None
+    if os.environ.get('AIPL_ENABLE_PAID_TOOLS') == '1':
+        action_path = out_dir / f'{filename_base}_Paid_Tool_Sheet.md'
+        _write_mode_b_action_sheet(rows, action_path)
 
     # ---- v6: Cold-call phone scripts ----
     scripts_path = out_dir / f'{filename_base}_Phone_Scripts.md'
@@ -458,8 +463,9 @@ def build_files(companies, enrichment, output_dir='/mnt/user-data/outputs', file
         'xlsx':         str(xlsx_path),
         'csv':          str(csv_path),
         'report':       str(rpt_path),
-        'action_sheet': str(action_path),
     }
+    if action_path:
+        result['paid_tool_sheet'] = str(action_path)
     if scripts_path:
         result['phone_scripts'] = str(scripts_path)
     if emails_path:
@@ -655,17 +661,29 @@ def _classify_action(r):
         return ('CALL_SWITCHBOARD', f'JustDial search for "{str(r["Company"])[:35]} {r.get("City","Mumbai")} switchboard"')
 
     if is_gatekeeper and not em and not ph:
-        return ('LUSHA', 'Have gatekeeper name only → Lusha credit for phone')
+        return ('NEEDS_RESEARCH',
+                f'Have name only ({fn} {ln}) — use Phone_Scripts.md switchboard '
+                f'script + JustDial search to find office phone, then call.')
     if is_gatekeeper and ph and not em:
-        return ('APOLLO', 'Have name + phone, missing email → Apollo/Contact Out credit')
+        return ('CALL_GATEKEEPER',
+                f'Call {fn} {ln} at {ph} — ask "may I speak to your IT Head?". '
+                f'Use Phone_Scripts.md gatekeeper script.')
     if is_gatekeeper and em and ph:
-        return ('CALL_GATEKEEPER', f'Call {fn} {ln} — ask "may I speak to the IT Head?"')
+        return ('CALL_GATEKEEPER',
+                f'Call {fn} {ln} — ask "may I speak to the IT Head?". '
+                f'Backup: send the email template from Email_Templates.md.')
     if is_it and em and ph:
-        return ('READY', 'Fully enriched IT contact — call directly')
+        return ('READY', 'Fully enriched IT contact — call directly using Phone_Scripts.md script.')
     if is_it and not em:
-        return ('APOLLO', 'IT-role found, missing email → Apollo credit')
+        return ('COLD_EMAIL_NEEDED',
+                'IT-role found, email is the gap. The skill\'s email_finder.py '
+                'already tries MX-validated patterns. If still blank, use the '
+                'Phone_Scripts.md script for direct phone outreach instead.')
     if is_it and not ph:
-        return ('LUSHA', 'IT-role found, missing phone → Lusha credit')
+        return ('COLD_CALL_NEEDED',
+                'IT-role found + email in hand, no phone yet. Send the '
+                'Email_Templates.md email today + JustDial-search the switchboard '
+                'for follow-up call in 3 days if no reply.')
     return ('REVIEW', 'Manual review needed')
 
 
@@ -680,14 +698,15 @@ def _write_actionable_coverage_report(rows, rpt_path):
     counts = {k: len(v) for k, v in buckets.items()}
 
     section_titles = {
-        'READY':            '✓ READY TO CALL DIRECTLY (work these FIRST)',
-        'CALL_GATEKEEPER':  '↻ CALL THE GATEKEEPER, ASK FOR IT HEAD',
-        'CALL_SWITCHBOARD': '☎ COLD-CALL SWITCHBOARD (search JustDial for number first)',
-        'MCA_LOOKUP':       '📋 MCA PORTAL LOOKUP (not on any aggregator — manual CAPTCHA lookup)',
-        'LUSHA':            '💳 USE LUSHA CREDIT (looking for phone)',
-        'APOLLO':           '💳 USE APOLLO CREDIT (looking for email)',
-        'SKIP':             '✗ SKIP — not worth chasing',
-        'REVIEW':           '⚠ NEEDS MANUAL REVIEW',
+        'READY':              '✓ READY TO CALL DIRECTLY (work these FIRST — use Phone_Scripts.md)',
+        'CALL_GATEKEEPER':    '↻ CALL THE GATEKEEPER, ASK FOR IT HEAD (free — phone + script in hand)',
+        'CALL_SWITCHBOARD':   '☎ COLD-CALL SWITCHBOARD (search JustDial for number — use Phone_Scripts.md switchboard script)',
+        'MCA_LOOKUP':         '📋 MCA PORTAL LOOKUP (not on any aggregator — manual CAPTCHA lookup at mca.gov.in)',
+        'COLD_EMAIL_NEEDED':  '📧 SEND COLD EMAIL (use Email_Templates.md — phone follow-up if no reply in 3 days)',
+        'COLD_CALL_NEEDED':   '📞 COLD-CALL via JustDial + EMAIL (use Phone_Scripts.md + Email_Templates.md together)',
+        'NEEDS_RESEARCH':     '🔍 FIND THEIR PHONE FIRST (JustDial → then call using switchboard script)',
+        'SKIP':               '✗ SKIP — not worth chasing (cooperative / Nidhi / wrong segment)',
+        'REVIEW':             '⚠ NEEDS MANUAL REVIEW',
     }
 
     with open(rpt_path, 'w', encoding='utf-8') as f:
@@ -695,16 +714,18 @@ def _write_actionable_coverage_report(rows, rpt_path):
         f.write(f'Generated: {date.today().strftime("%d %b %Y")}\n')
         f.write('='*70 + '\n\n')
         f.write(f'SUMMARY ({n} companies):\n')
-        f.write(f'  ✓ Ready to call directly:              {counts.get("READY",0):3d}  (IT contact found, email+phone in hand)\n')
-        f.write(f'  ↻ Call gatekeeper, ask for IT Head:    {counts.get("CALL_GATEKEEPER",0):3d}  (have MD/Director, need IT person)\n')
-        f.write(f'  ☎ Cold-call switchboard via JustDial:  {counts.get("CALL_SWITCHBOARD",0):3d}  (no contact at all - get switchboard #)\n')
-        f.write(f'  📋 MCA portal lookup needed:           {counts.get("MCA_LOOKUP",0):3d}  (not on any aggregator)\n')
-        f.write(f'  💳 Use Lusha credit (phone gap):       {counts.get("LUSHA",0):3d}\n')
-        f.write(f'  💳 Use Apollo credit (email gap):      {counts.get("APOLLO",0):3d}\n')
-        f.write(f'  ✗ Skip (cooperative/NBFC):             {counts.get("SKIP",0):3d}\n')
+        f.write(f'  ✓ Ready to call directly:              {counts.get("READY",0):3d}  (IT contact + email + phone — start here, use Phone_Scripts.md)\n')
+        f.write(f'  ↻ Call gatekeeper, ask for IT Head:    {counts.get("CALL_GATEKEEPER",0):3d}  (have MD/Director with phone — gatekeeper script ready)\n')
+        f.write(f'  ☎ Cold-call switchboard via JustDial:  {counts.get("CALL_SWITCHBOARD",0):3d}  (find phone on JustDial, use switchboard script)\n')
+        f.write(f'  📋 MCA portal lookup needed:           {counts.get("MCA_LOOKUP",0):3d}  (very new Pvt Ltd — manual mca.gov.in lookup)\n')
+        f.write(f'  📧 Cold email (template ready):        {counts.get("COLD_EMAIL_NEEDED",0):3d}  (use Email_Templates.md)\n')
+        f.write(f'  📞 Cold call + email follow-up:        {counts.get("COLD_CALL_NEEDED",0):3d}  (Phone_Scripts.md + Email_Templates.md)\n')
+        f.write(f'  🔍 Find phone first (no contact yet):  {counts.get("NEEDS_RESEARCH",0):3d}  (gatekeeper name only — JustDial then call)\n')
+        f.write(f'  ✗ Skip (cooperative/Nidhi/wrong fit):  {counts.get("SKIP",0):3d}\n')
         f.write(f'  ⚠ Manual review needed:                {counts.get("REVIEW",0):3d}\n\n')
 
-        for cat in ['READY','CALL_GATEKEEPER','CALL_SWITCHBOARD','MCA_LOOKUP','LUSHA','APOLLO','SKIP','REVIEW']:
+        for cat in ['READY','CALL_GATEKEEPER','CALL_SWITCHBOARD','MCA_LOOKUP',
+                    'COLD_EMAIL_NEEDED','COLD_CALL_NEEDED','NEEDS_RESEARCH','SKIP','REVIEW']:
             rs = buckets.get(cat, [])
             if not rs: continue
             f.write('-'*70 + '\n')
