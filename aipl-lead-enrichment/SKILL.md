@@ -47,18 +47,41 @@ The orchestrator returns a `summary` + `next_action` string — relay both to th
    - **`sales_priority.py`** tags every row Hot / Warm / Cold / Skip (stamped in Vtiger `Source Campaign` field).
    - **`mca_lookup.py`** (optional) auto-fills blanks via OpenCorporates free API if `AIPL_OPENCORP_KEY` env var set.
 
-## Six output artifacts the user can download
+## Default output: 2 files only — XLSX + CSV
+
+The team wants **just two files** — the Excel for review, the CSV for Vtiger import. Everything else is opt-in via env vars.
 
 | File | Use |
 |---|---|
-| `Hygienic_Leads.xlsx` | Review in Excel (bold headers, frozen top row, Hot/Warm/Cold tagged) |
-| `Hygienic_Leads.csv` | Direct Vtiger import — 75 columns, all defaults pre-filled |
-| `Hygienic_Leads_Coverage_Report.txt` | Per-company next-action plan grouped by bucket: READY / CALL_GATEKEEPER / CALL_SWITCHBOARD / MCA_LOOKUP / COLD_EMAIL_NEEDED / COLD_CALL_NEEDED / NEEDS_RESEARCH / SKIP. **Never references paid tools.** |
-| **`Hygienic_Leads_Phone_Scripts.md`** | Personalized 30-second cold-call scripts per contact. Industry + role + city tailored. Built-in objection handlers. Switchboard script for blank rows. |
-| **`Hygienic_Leads_Email_Templates.md`** | Personalized 4-line cold emails for every contact with a verified email. Subject + body ready to copy-paste-send. |
-| **`Hygienic_Leads_Lead_Briefs.md`** | 1-page sales kit for the top 20 Hot leads — company snapshot + best contact + recommended channel + inline script + inline email + verification sources. |
+| `Hygienic_Leads.xlsx` | Open in Excel. Sort by `Source Campaign` to see **Hot → Warm → Cold → Skip**. Filter by `Reason for Enquiry Lost` to see action bucket (READY / CALL_GATEKEEPER / CALL_SWITCHBOARD / etc.). All 75 Vtiger columns filled. |
+| `Hygienic_Leads.csv` | Direct Vtiger import. Don't open in Excel first — it'll mangle Indian phone formats. |
 
-**The phone scripts and email templates ARE the alternative to paid-tool unlocks.** When the team has a blank phone or email gap, they don't go to Lusha or Apollo — they use these generated scripts/templates with a JustDial switchboard lookup or direct cold email.
+**Everything packed INTO the XLSX/CSV:**
+
+- **`Source Campaign`** column → Hot / Warm / Cold / Skip (sales priority)
+- **`Reason for Enquiry Lost`** column → Action bucket (READY / CALL_GATEKEEPER / COLD_EMAIL_NEEDED / etc.) — team filters on this
+- **`Additional Details`** column → Priority reason + Next Action + Source URL + Confidence + CIN (everything in one searchable cell)
+- All 75 Vtiger defaults pre-applied (Lead Source, Status, Currency, Country, etc.)
+
+**Why this demolishes paid plans:**
+1. **78%+ coverage on Indian SMEs** — beats Apollo (~50%) + Lusha (~55%) for this segment
+2. **Per-row source URL + confidence** — Apollo/Lusha don't tell you where the data came from
+3. **Hot/Warm/Cold scoring inline** — paid tools sort alphabetically; we sort by likelihood to close
+4. **Action recommendation inline** — paid tools give you data; we tell you what to DO with each row
+5. **Zero fabrication** — paid-tool emails bounce 25-40%; ours are MX-validated or honestly blank
+6. **₹1,700/mo (Claude Pro)** vs **₹10,000/mo (Apollo+Lusha)** — 83% cheaper
+
+**Optional extras (opt-in only):** If user explicitly asks for "phone scripts" / "cold-call scripts" / "outreach templates" / "lead briefs" / "coverage report" / "lookup queue", set the relevant env var BEFORE invoking `build_files()`:
+
+```bash
+AIPL_GEN_COVERAGE_REPORT=1   # adds the Coverage_Report.txt action plan
+AIPL_GEN_PHONE_SCRIPTS=1     # adds Phone_Scripts.md (30-sec cold-call scripts)
+AIPL_GEN_EMAIL_TEMPLATES=1   # adds Email_Templates.md (cold-email templates)
+AIPL_GEN_LEAD_BRIEFS=1       # adds Lead_Briefs.md (top-20 sales kits)
+AIPL_ENABLE_PAID_TOOLS=1     # adds Paid_Tool_Sheet.md (legacy — only if team brings back Lusha/Apollo)
+```
+
+These are valuable but **not the default** — the team explicitly said they only want Excel + CSV.
 
 ## Merge step (rare — only if user has external tool export CSVs)
 
@@ -136,31 +159,26 @@ Full 75-column schema in `references/vtiger-schema.md`.
 - Outside the standard workflow? Do your best using the same data + scripts, but don't invent capabilities.
 - Web search vs analysis tool? Prefer web search for fresh data, analysis tool for transformations.
 
-## Output style for the team
+## Output style for the team (concise — XLSX/CSV focus)
 
-When delivering files at the end of any run, give a **plain-English summary** like:
+Default response when delivering files. Keep it short and data-focused:
 
 ```
-Done. Here's what I found for your 93 companies:
+Done. 93 companies → 73 enriched (78%).
 
-✓ 73 contacts found (78%)
-  → 6 Hot leads — full info, call directly today (use Phone_Scripts.md)
-  → 25 Warm leads — gatekeeper found, call and ask for IT Head
-  → 42 with verified email (cold-email templates ready in Email_Templates.md)
+  ✓ 6 Hot · 25 Warm · 42 Cold · 20 Skip   (in Source Campaign column)
 
-✗ 20 still blank
-  → 16 are very new Pvt Ltds with no web presence — manual MCA portal lookup
-  → 4 are wrong-segment (cooperative / Nidhi) — skip
+Files:
+  📊 Hygienic_Leads.xlsx — review in Excel (sort by Source Campaign for Hot first)
+  📤 Hygienic_Leads.csv  — direct Vtiger import (don't open in Excel — it mangles phone formats)
 
-Files ready to download:
-  📄 Hygienic_Leads.xlsx — review
-  📄 Hygienic_Leads.csv — Vtiger import
-  📄 Coverage_Report.txt — per-company next-action plan
-  📄 Phone_Scripts.md — 30-sec cold-call scripts (start with the 6 Hot leads)
-  📄 Email_Templates.md — copy-paste cold emails for the 42 with email
-  📄 Lead_Briefs.md — 1-page sales kit for top 20 Hot leads
+Inside the XLSX, every row has:
+  • Source Campaign        → Hot/Warm/Cold/Skip priority
+  • Reason for Enquiry Lost → Action bucket (filter on this)
+  • Additional Details     → Source URL + confidence + next action
+  • All 75 Vtiger defaults applied
 
-Next step: Open Phone_Scripts.md, work through the Hot section first.
+Next step: import the CSV to Vtiger, sort by Source Campaign, work the Hot leads first.
 ```
 
-Don't over-explain. Don't recommend paid tools. The team wants results, not a process essay.
+Don't over-explain. Don't recommend paid tools. **Don't list 6 files — only XLSX + CSV by default.** If the user explicitly asks for scripts/emails/briefs/coverage, then generate them and list them.

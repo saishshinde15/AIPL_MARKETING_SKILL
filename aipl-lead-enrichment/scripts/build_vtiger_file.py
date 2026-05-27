@@ -404,6 +404,20 @@ def build_files(companies, enrichment, output_dir='/mnt/user-data/outputs', file
     except ImportError:
         pass  # v5 fallback — skill works without sales_priority
 
+    # ---- v7: Pack action recommendation INTO the XLSX itself ----
+    # Use the "Reason for Enquiry Lost" unused Vtiger field to store the
+    # team's next-action per company. This way the XLSX is the single
+    # source of truth — team can filter/sort by this column.
+    for r in rows:
+        cat, action = _classify_action(r)
+        r['Reason for Enquiry Lost'] = cat  # filterable bucket name
+        # Stash the human-readable action in Additional Details
+        existing_ad = r.get('Additional Details', '')
+        r['Additional Details'] = (
+            (existing_ad + ' | ' if existing_ad else '') +
+            f"Next Action: {action}"
+        ).strip(' |')
+
     # Re-write XLSX + CSV with the priority stamps
     # (the xlsx/csv above were written WITHOUT Source Campaign — overwrite now)
     wb2 = Workbook()
@@ -424,54 +438,59 @@ def build_files(companies, enrichment, output_dir='/mnt/user-data/outputs', file
         w.writeheader()
         w.writerows(rows)
 
-    # ---- Actionable Coverage Report ----
-    _write_actionable_coverage_report(rows, rpt_path)
+    # ============================================================
+    # v7: DEFAULT OUTPUT = XLSX + CSV ONLY
+    # Everything else is opt-in via env vars (or kwargs). Keeps the
+    # output lean — all the value packed into the two import-ready files.
+    #
+    # To enable extras, set ANY of:
+    #   AIPL_GEN_COVERAGE_REPORT=1   → generate Coverage_Report.txt
+    #   AIPL_GEN_PHONE_SCRIPTS=1     → generate Phone_Scripts.md
+    #   AIPL_GEN_EMAIL_TEMPLATES=1   → generate Email_Templates.md
+    #   AIPL_GEN_LEAD_BRIEFS=1       → generate Lead_Briefs.md
+    #   AIPL_ENABLE_PAID_TOOLS=1     → generate Paid_Tool_Sheet.md
+    # ============================================================
+    result = {
+        'xlsx': str(xlsx_path),
+        'csv':  str(csv_path),
+    }
 
-    # ---- Optional: paid-tool Action Sheet (default OFF — AIPL works Claude-only) ----
-    # Only generated if env var AIPL_ENABLE_PAID_TOOLS=1 is set (e.g., if AIPL ever
-    # decides to bring back Lusha/Apollo/Signal Hire/Contact Out paid tools).
-    action_path = None
+    if os.environ.get('AIPL_GEN_COVERAGE_REPORT') == '1':
+        _write_actionable_coverage_report(rows, rpt_path)
+        result['report'] = str(rpt_path)
+
     if os.environ.get('AIPL_ENABLE_PAID_TOOLS') == '1':
         action_path = out_dir / f'{filename_base}_Paid_Tool_Sheet.md'
         _write_mode_b_action_sheet(rows, action_path)
-
-    # ---- v6: Cold-call phone scripts ----
-    scripts_path = out_dir / f'{filename_base}_Phone_Scripts.md'
-    try:
-        from cold_call_scripts import write_scripts_file
-        write_scripts_file(rows, str(scripts_path))
-    except ImportError:
-        scripts_path = None
-
-    # ---- v6: Email outreach templates ----
-    emails_path = out_dir / f'{filename_base}_Email_Templates.md'
-    try:
-        from email_templates import write_emails_file
-        write_emails_file(rows, str(emails_path))
-    except ImportError:
-        emails_path = None
-
-    # ---- v6 finish: Top-20 Lead Briefs (1-pager per Hot lead) ----
-    briefs_path = out_dir / f'{filename_base}_Lead_Briefs.md'
-    try:
-        from lead_brief import write_briefs_file
-        write_briefs_file(rows, str(briefs_path), top_n=20)
-    except ImportError:
-        briefs_path = None
-
-    result = {
-        'xlsx':         str(xlsx_path),
-        'csv':          str(csv_path),
-        'report':       str(rpt_path),
-    }
-    if action_path:
         result['paid_tool_sheet'] = str(action_path)
-    if scripts_path:
-        result['phone_scripts'] = str(scripts_path)
-    if emails_path:
-        result['email_templates'] = str(emails_path)
-    if briefs_path:
-        result['lead_briefs'] = str(briefs_path)
+
+    if os.environ.get('AIPL_GEN_PHONE_SCRIPTS') == '1':
+        try:
+            from cold_call_scripts import write_scripts_file
+            scripts_path = out_dir / f'{filename_base}_Phone_Scripts.md'
+            write_scripts_file(rows, str(scripts_path))
+            result['phone_scripts'] = str(scripts_path)
+        except ImportError:
+            pass
+
+    if os.environ.get('AIPL_GEN_EMAIL_TEMPLATES') == '1':
+        try:
+            from email_templates import write_emails_file
+            emails_path = out_dir / f'{filename_base}_Email_Templates.md'
+            write_emails_file(rows, str(emails_path))
+            result['email_templates'] = str(emails_path)
+        except ImportError:
+            pass
+
+    if os.environ.get('AIPL_GEN_LEAD_BRIEFS') == '1':
+        try:
+            from lead_brief import write_briefs_file
+            briefs_path = out_dir / f'{filename_base}_Lead_Briefs.md'
+            write_briefs_file(rows, str(briefs_path), top_n=20)
+            result['lead_briefs'] = str(briefs_path)
+        except ImportError:
+            pass
+
     return result
 
 
