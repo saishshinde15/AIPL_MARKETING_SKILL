@@ -148,6 +148,88 @@ def detect_intent(file_paths):
     return intent, classification
 
 
+# ---- Deep search planning -------------------------------------------------
+
+# Company types that deep search CANNOT recover (no digital footprint)
+_UNREACHABLE_TYPES = ('Cooperative Society', 'Nidhi / NBFC-Nidhi',
+                      'Producer Company', 'Section 8 (NGO)', 'Partnership Firm')
+
+
+def deep_search_plan(output_xlsx_path):
+    """
+    Analyze a generated XLSX, identify blank companies worth deep-searching,
+    and return a plan + warning message the team must see before triggering it.
+
+    Returns dict:
+        {
+          'blanks_total':       int,
+          'worth_searching':    [company names],   # exclude unreachable types
+          'unreachable':        [company names],   # cooperatives/Nidhi/etc.
+          'est_messages':       int,                # Claude message cost estimate
+          'est_recovery':       str,                # realistic coverage gain
+          'warning':            str,                # the message to show the team
+        }
+    """
+    df = pd.read_excel(output_xlsx_path).fillna('')
+
+    try:
+        from company_classifier import classify as _classify
+    except ImportError:
+        _classify = None
+
+    def _is_blank(r):
+        return not (str(r.get('First Name','')).strip() or str(r.get('Last Name','')).strip())
+
+    worth, unreachable = [], []
+    for _, r in df.iterrows():
+        if not _is_blank(r):
+            continue
+        name = str(r.get('Company',''))
+        ctype = _classify(name)['type'] if _classify else 'Unknown'
+        if ctype in _UNREACHABLE_TYPES:
+            unreachable.append(name)
+        else:
+            worth.append(name)
+
+    n_worth = len(worth)
+    est_msgs = max(3, round(n_worth * 1.3))   # ~1.3 Claude messages per deep-searched co
+    # Realistic recovery: ~40-50% of the worth-searching blanks
+    est_recovered = round(n_worth * 0.45)
+
+    warning = (
+        f"⚠️  DEEP SEARCH — please read before confirming\n"
+        f"\n"
+        f"What it does: aggressively researches the {n_worth} blank companies that\n"
+        f"MIGHT be findable — using LinkedIn company pages, press releases, annual\n"
+        f"reports, news, and multiple search angles per company.\n"
+        f"\n"
+        f"⏱  COST: about {est_msgs} Claude messages in one go. On the $20 Pro plan\n"
+        f"   that is a big chunk of your 5-hour message limit. You may not be able to\n"
+        f"   run much else in Claude for the next few hours after this.\n"
+        f"\n"
+        f"🎯 REALISTIC RESULT: recovers roughly {est_recovered} of the {n_worth} blanks\n"
+        f"   (~45%). The rest genuinely have no findable online presence.\n"
+        f"\n"
+        f"🚫 SKIPPED ({len(unreachable)} companies): cooperatives, Nidhis, producer\n"
+        f"   companies — these aren't on any online registry, deep search can't help.\n"
+        f"\n"
+        f"💡 TIP: You don't have to do this every week. Run the normal (fast) enrichment\n"
+        f"   weekly, and only run Deep Search once a month on accumulated blanks — the\n"
+        f"   results get cached so you never re-pay this cost for the same company.\n"
+        f"\n"
+        f"Reply 'yes deep search' to proceed, or 'skip' to keep the current results."
+    )
+
+    return {
+        'blanks_total':    n_worth + len(unreachable),
+        'worth_searching': worth,
+        'unreachable':     unreachable,
+        'est_messages':    est_msgs,
+        'est_recovery':    f"~{est_recovered} of {n_worth} blanks (~45%)",
+        'warning':         warning,
+    }
+
+
 # ---- Pipeline runner -----------------------------------------------------
 
 def run(input_files, output_dir, enrichment=None, filename_base='Hygienic_Leads'):

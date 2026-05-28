@@ -234,8 +234,12 @@ class Cache:
         last   = (contact.get("last")  or contact.get("last_name")  or "").strip()
         email  = (contact.get("email") or "").strip().lower()
 
-        if not (first or last or email):
-            return False  # don't save totally empty contacts
+        # v7.2 GUARD: only cache contacts that have a NAME.
+        # An email/phone with no person attached is NOT a useful "contact" — and
+        # caching nameless records pollutes the cache (it can become the "best"
+        # hit and wipe real names). A contact must identify a person.
+        if not (first or last):
+            return False
 
         # Ensure parent company row exists
         c = self._db.cursor()

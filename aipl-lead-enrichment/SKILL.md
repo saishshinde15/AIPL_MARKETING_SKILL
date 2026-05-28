@@ -83,6 +83,56 @@ AIPL_ENABLE_PAID_TOOLS=1     # adds Paid_Tool_Sheet.md (legacy — only if team 
 
 These are valuable but **not the default** — the team explicitly said they only want Excel + CSV.
 
+## Deep Search mode (opt-in — pushes coverage 77% → ~85%)
+
+The fast pass (default) does one web search per company → ~77% coverage. The remaining ~23% are blanks. **Deep Search** is an opt-in mode that aggressively researches those blanks.
+
+**When the team triggers it** — they say *"deep search"*, *"find more contacts"*, *"push the coverage"*, *"research the blanks harder"* — you MUST do two things, in order:
+
+### Step 1: Show the warning FIRST (do not skip this)
+
+Call `pipeline_orchestrator.deep_search_plan(output_xlsx_path)` to get the warning text, then show it to the user **verbatim** and WAIT for confirmation. The warning looks like:
+
+```
+⚠️  DEEP SEARCH — please read before confirming
+
+What it does: aggressively researches the N blank companies that MIGHT be
+findable — LinkedIn company pages, press releases, annual reports, news,
+multiple search angles per company.
+
+⏱  COST: about ~30 Claude messages in one go. On the $20 Pro plan that is a
+   big chunk of your 5-hour message limit. You may not be able to run much
+   else in Claude for the next few hours after this.
+
+🎯 REALISTIC RESULT: recovers roughly 7 of 15 blanks (~45%). The rest
+   genuinely have no findable online presence.
+
+🚫 SKIPPED (3 companies): cooperatives, Nidhis, producer companies — not on
+   any online registry, deep search can't help.
+
+💡 TIP: Don't do this every week. Run fast enrichment weekly, Deep Search
+   monthly on accumulated blanks — results get cached so you never re-pay.
+
+Reply 'yes deep search' to proceed, or 'skip' to keep current results.
+```
+
+**Never start deep search without showing this warning + getting a 'yes'.** The team is on a $20 plan with a message budget — they must understand the cost.
+
+### Step 2: Only after the user confirms 'yes'
+
+For each company in the plan's `worth_searching` list (NOT the unreachable ones), do aggressive multi-angle research:
+- Web search: `"<company>" <city> CIO OR "IT Head" OR CTO LinkedIn`
+- Web search: `"<company>" press release OR "appoints" OR annual report`
+- Web search: `"<company>" <city> director site:zaubacorp.com OR site:tofler.in`
+- Check the company's own website Team/About page
+- For listed cos: check annual report PDF for CXO names
+
+Then re-run `build_files()` with the newly-found contacts merged into the enrichment dict. The deep-search results get cached (so they're never re-paid for the same company).
+
+**Budget guard:** if `est_messages` in the plan exceeds ~35, suggest the user do it in two batches across two sessions (so they don't exhaust the whole 5-hour quota at once).
+
+---
+
 ## Merge step (rare — only if user has external tool export CSVs)
 
 If the user uploads CSV/XLSX exports + the master file and says "merge these", "I'm done with manual lookups", or similar:

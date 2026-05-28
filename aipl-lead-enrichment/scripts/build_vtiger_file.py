@@ -293,6 +293,25 @@ def _merge_cache_into_enrichment(companies, enrichment):
     CONF_RANK = {'High': 0, 'Medium': 1, 'Low': 2, '': 3, None: 3}
     merged = dict(enrichment or {})
 
+    # v7.2: re-verify cached emails via MX so we don't serve dead/wrong addresses
+    try:
+        from email_finder import _has_mx, _domain_from_website
+        _can_verify = True
+    except Exception:
+        _can_verify = False
+
+    def _email_still_valid(email):
+        """Cheap MX re-check on a cached email. True if domain still accepts mail."""
+        if not email or '@' not in email:
+            return False
+        if not _can_verify:
+            return True  # can't check — assume ok rather than drop
+        domain = email.split('@', 1)[1].strip().lower()
+        try:
+            return _has_mx(domain)
+        except Exception:
+            return True  # network hiccup — don't punish the cached data
+
     for src in companies:
         name = str(src.get('EnterpriseName') or src.get('Company') or '').strip()
         if not name:
@@ -302,28 +321,46 @@ def _merge_cache_into_enrichment(companies, enrichment):
 
         if hit and hit.get('best'):
             cached = hit['best']
-            # If cached contact is higher-confidence than fresh, prefer cached.
-            # If fresh is higher-confidence (or cached is stale), prefer fresh + save back.
             fresh_conf  = CONF_RANK.get((fresh.get('confidence') or '').title(), 3)
             cached_conf = CONF_RANK.get((cached.get('confidence') or '').title(), 3)
-            if (cached_conf < fresh_conf) or (cached_conf == fresh_conf and not cached.get('is_stale')):
-                # Use cache — fill empties in fresh from cached
-                merged[name] = {
-                    'first':       fresh.get('first')       or cached.get('first_name', ''),
-                    'last':        fresh.get('last')        or cached.get('last_name', ''),
-                    'designation': fresh.get('designation') or cached.get('designation', ''),
-                    'email':       fresh.get('email')       or cached.get('email', ''),
-                    'phone':       fresh.get('phone')       or cached.get('phone', ''),
-                    'mobile':      fresh.get('mobile')      or cached.get('mobile', ''),
-                    'website':     fresh.get('website')     or hit['company'].get('website', ''),
-                    'linkedin':    fresh.get('linkedin')    or cached.get('linkedin', ''),
-                    'source_url':  fresh.get('source_url')  or cached.get('source_url', ''),
-                    'confidence':  cached.get('confidence', ''),
-                    'cin':         fresh.get('cin')         or hit['company'].get('cin', ''),
-                    'notes':       ((fresh.get('notes','') + ' | ' if fresh.get('notes') else '') +
-                                    f"Cache hit ({cached.get('days_old',0)}d old, "
-                                    f"{cached.get('confidence','?')} conf)").strip(' |'),
-                }
+            is_stale    = cached.get('is_stale', False)
+            days_old    = cached.get('days_old', 0)
+
+            # ---- v7.2 RULE: FRESH RESEARCH ALWAYS WINS ----
+            # Only fall back to cache for fields the fresh pass DIDN'T find.
+            # Cache never overrides a value fresh research produced this run.
+            cached_email = cached.get('email', '')
+            # Re-verify cached email before serving it
+            if cached_email and not _email_still_valid(cached_email):
+                cached_email = ''  # drop dead email — don't serve it
+
+            # Downgrade confidence on stale cache so the team knows to re-check
+            if is_stale:
+                cache_conf_label = 'Low'   # stale → never High
+                stale_note = f"⚠ CACHED {days_old}d ago (STALE — re-verify before calling)"
+            else:
+                cache_conf_label = 'Medium' if cached.get('confidence') == 'High' else cached.get('confidence', 'Low')
+                stale_note = f"Cached {days_old}d ago — verify before calling"
+
+            merged[name] = {
+                # Fresh value if present, else fall back to cache (fill-gaps only)
+                'first':       fresh.get('first')       or cached.get('first_name', ''),
+                'last':        fresh.get('last')        or cached.get('last_name', ''),
+                'designation': fresh.get('designation') or cached.get('designation', ''),
+                'email':       fresh.get('email')       or cached_email,
+                'phone':       fresh.get('phone')       or cached.get('phone', ''),
+                'mobile':      fresh.get('mobile')      or cached.get('mobile', ''),
+                'website':     fresh.get('website')     or hit['company'].get('website', ''),
+                'linkedin':    fresh.get('linkedin')    or cached.get('linkedin', ''),
+                'source_url':  fresh.get('source_url')  or cached.get('source_url', ''),
+                # Confidence = fresh's if fresh found a name; else downgraded cache label
+                'confidence':  (fresh.get('confidence') if fresh.get('first') or fresh.get('last')
+                                else cache_conf_label),
+                'cin':         fresh.get('cin')         or hit['company'].get('cin', ''),
+                'notes':       ((fresh.get('notes','') + ' | ' if fresh.get('notes') else '') +
+                                (stale_note if not (fresh.get('first') or fresh.get('last')) else '')
+                               ).strip(' |'),
+            }
 
         # Save fresh enrichment back to cache for future runs (if we have a name)
         if fresh and (fresh.get('first') or fresh.get('last') or fresh.get('email')):
