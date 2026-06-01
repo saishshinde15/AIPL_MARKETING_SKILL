@@ -25,3 +25,8 @@ Icon
 /tmp/
 *.log
 output/
+
+# AIPL real company data — never commit (privacy / DPDP)
+*.xlsx
+*.csv
+!aipl-lead-enrichment/assets/*.tsv
