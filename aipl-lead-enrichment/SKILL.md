@@ -46,11 +46,12 @@ The orchestrator returns a `summary` + `next_action` string — relay both to th
    - **`local_cache.py`** checks `~/.aipl-cache/contacts.db` first → cache hits return in milliseconds (30 min cold → 1 sec repeat). Fresh results saved back. Auto-learns email patterns per domain.
    - **`sales_priority.py`** tags every row Hot / Warm / Cold / Skip (stamped in Vtiger `Source Campaign` field).
    - **`mca_lookup.py`** (optional) auto-fills blanks via OpenCorporates free API if `AIPL_OPENCORP_KEY` env var set.
-   - **Phone enrichment (v7.5)** — for any company with a blank phone, the orchestrator automatically:
-     1. **`website_phone_finder.py`** reads the company's OWN website Contact/About page and extracts the switchboard (free, ethical, no key — the company publishes this number publicly). Validates Indian phone formats + STD codes, no fabrication.
-     2. **`google_places_phone.py`** looks the company up on Google Maps via the Places API if `GOOGLE_PLACES_KEY` is set (free Google credit ~$200/mo = thousands of lookups). Returns the verified business switchboard.
-     Both make network calls; in the Claude.ai app sandbox they no-op gracefully if there's no internet. Bounded to ~120 companies/run (override via `AIPL_PHONE_ENRICH_CAP`) so big files don't blow up. Phone coverage gain: ~10% → ~50-60% when both are active.
-     **Note:** these return the office **switchboard**, not the IT Head's personal mobile. Pair with the "call and ask for IT Head" scripts. For direct mobiles, the only real option is a paid India-specific tool (EazyReach — DIN-based, INR pricing) — recommend that to AIPL only if switchboard coverage isn't enough.
+   - **Phone enrichment (v7.5) — phones matter as much as emails to AIPL. Use these FREE sources, in order:**
+     1. **Claude's own web research (FREE, no setup, do this FIRST).** When you web-search each company, the switchboard number is very often right there in the search-result snippet (e.g. "Batliboi Mumbai contact" → the number shows in the preview), or one click into the company's Contact page. Actively pull it. This is just reading public search results — free, no API, no card, no ToS issue. For a company with no IT contact found, AT MINIMUM grab the switchboard number this way so the team can cold-call.
+     2. **`website_phone_finder.py`** — automatically reads the company's OWN Contact/About page and extracts the switchboard (free, no key, the company publishes this publicly). Validates Indian phone formats + STD codes, no fabrication. Fires for any blank-phone company with a known website.
+     3. **`google_places_phone.py`** — OPTIONAL, dormant by default. Only runs if `GOOGLE_PLACES_KEY` is set. ⚠️ Google requires a billing account (credit card) even for its free credit — so this stays OFF unless AIPL explicitly wants to set up billing. The two free sources above are the default; Google Places is not needed.
+     Coverage gain from the free sources alone: ~10% → ~40-50% phones.
+     **Note:** these give the office **switchboard**, not the IT Head's personal mobile. Pair with the "call and ask for IT Head" scripts. For direct mobiles, the only real option is a paid India-specific tool (EazyReach — DIN-based, INR pricing) — recommend to AIPL only if switchboard coverage isn't enough.
 
 ## Default output: 2 files only — XLSX + CSV
 
