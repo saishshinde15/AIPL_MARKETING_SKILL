@@ -35,21 +35,30 @@ INDUSTRY_FIT = {
     '':                    4,  # unknown — middling default
 }
 
-# ---- Company size signals from the name itself ----
-LARGE_PSU_KEYWORDS = [
-    'CORPORATION LIMITED', 'CORPORATION LTD', 'OIL AND NATURAL GAS', 'ONGC',
-    'NTPC', 'BHEL', 'SAIL', 'GAIL', 'IOCL', 'BARODA', 'STATE BANK',
-    'BANK OF', 'INDIA POST', 'AIRPORTS AUTHORITY',
-]
-LISTED_LIKELY = [
-    'MOTILAL OSWAL', 'ANAND RATHI', 'HAZOOR', 'INDISTOCK',
-    'MANUGRAPH', 'BATLIBOI', 'CHEMBOND', 'TARAPUR TRANSFORMERS',
-    'APLAB', 'SKY INDUSTRIES', 'HINDWARE',
-]
-MID_SIZE_SIGNALS = ['LIMITED', ' LTD']  # listed/public companies likely mid-size+
-SMALL_SIGNALS = ['PRIVATE LIMITED', 'PVT LTD', 'PVT. LTD', 'PVT LIMITED']
-TINY_SIGNALS = ['LIMITED LIABILITY PARTNERSHIP', ' LLP']
-SKIP_SIGNALS = ['SAHAKARI', 'PATSANTHA', 'NIDHI', 'PRODUCER COMPANY']
+# ---- Company size signals — STRUCTURAL only (no hardcoded company names) ----
+# Size is inferred from the legal-entity suffix + generic structural markers
+# that hold for ANY Indian company, never from a list of specific names.
+# (A hardcoded name list would only work for the one file it was built from.)
+SKIP_SIGNALS = ['SAHAKARI', 'PATSANTHA', 'NIDHI', 'PRODUCER COMPANY',
+                'CO-OPERATIVE', 'COOPERATIVE']
+# Generic structural markers of large/PSU/government entities (not company-specific)
+LARGE_STRUCTURAL = ['CORPORATION LIMITED', 'CORPORATION LTD',
+                    'CORPN LIMITED', 'CORP LIMITED']
+GOVT_MARKERS = ['GOVERNMENT OF', 'GOVT OF', 'MUNICIPAL', 'AUTHORITY',
+                'COMMISSION', 'BOARD OF', 'PUBLIC SECTOR']
+SMALL_SIGNALS = ['PRIVATE LIMITED', 'PVT LTD', 'PVT. LTD', 'PVT LIMITED',
+                 'PRIVATE LTD']
+TINY_SIGNALS = ['LIMITED LIABILITY PARTNERSHIP', ' LLP', 'OPC',
+                'ONE PERSON COMPANY']
+PUBLIC_LTD_SIGNALS = ['LIMITED', ' LTD', ' LTD.']  # public ltd = mid-size+
+
+# Bank / financial-institution markers (large by nature, structural not name-based).
+# Word-stems so both "Finance Ltd" and "Finance Limited" forms match.
+BANK_MARKERS = [' BANK ', 'BANK LIMITED', 'BANK LTD', 'FINANCE LIMITED',
+                'FINANCE LTD', 'FINANCIAL SERVICES', 'INSURANCE',
+                'SECURITIES LIMITED', 'SECURITIES LTD', 'MUTUAL FUND',
+                'ASSET MANAGEMENT', 'CAPITAL LIMITED', 'CAPITAL LTD',
+                'MICROFINANCE', 'HOUSING FINANCE', 'NBFC']
 
 # IT-decision-maker role priority
 IT_ROLES = {
@@ -72,19 +81,26 @@ GATEKEEPER_ROLES = {
 
 
 def _size_score(company_name):
-    """Heuristic company-size score from the name. 1 (tiny) — 10 (mega)."""
+    """
+    Structural company-size score from the name's legal form. 0 (skip) — 10 (mega).
+    Uses ONLY generalizable legal-entity + sector markers — never specific
+    company names — so it works identically on any file/industry.
+    """
     up = (company_name or '').upper()
     if any(k in up for k in SKIP_SIGNALS):
         return 0
-    if any(k in up for k in LARGE_PSU_KEYWORDS):
-        return 10
-    if any(k in up for k in LISTED_LIKELY):
-        return 8
+    if any(k in up for k in GOVT_MARKERS):
+        return 10  # govt / PSU / authority — largest
+    if any(k in up for k in LARGE_STRUCTURAL):
+        return 9   # "X CORPORATION LIMITED" — typically large
+    if any(k in up for k in BANK_MARKERS):
+        return 8   # banks / NBFCs / insurers / AMCs — large IT spenders
+    # Order matters: check tiny/small (more specific) before public-ltd catch-all
     if any(k in up for k in TINY_SIGNALS):
         return 3
     if any(k in up for k in SMALL_SIGNALS):
         return 4
-    if any(k in up for k in MID_SIZE_SIGNALS):
+    if any(k in up for k in PUBLIC_LTD_SIGNALS):
         return 6  # plain "Limited" = listed/public, likely mid-size+
     return 4  # default
 

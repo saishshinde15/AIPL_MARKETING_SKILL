@@ -43,24 +43,30 @@ def _suggested_channel(row):
 
 
 def _company_size_hint(company_name):
-    """Quick string heuristic for company size — for the team's context."""
+    """
+    Structural company-size hint from the legal form — for the team's context.
+    Uses ONLY generalizable legal-entity + sector markers (no specific company
+    names), so it reads correctly for any company on any file.
+    """
     up = (company_name or '').upper()
-    if any(k in up for k in [
-        'CORPORATION LIMITED', 'ONGC', 'NTPC', 'BHEL', 'SAIL', 'GAIL', 'IOCL',
-        'BARODA', 'STATE BANK',
-    ]):
-        return 'Large PSU / mega enterprise'
-    if any(k in up for k in [
-        'MOTILAL OSWAL', 'ANAND RATHI', 'HAZOOR', 'BATLIBOI', 'CHEMBOND',
-        'MANUGRAPH', 'HINDWARE', 'APLAB', 'SKY INDUSTRIES',
-    ]):
-        return 'BSE/NSE listed mid-large enterprise'
-    if 'PRIVATE LIMITED' in up or 'PVT LTD' in up or 'PVT. LTD' in up:
-        return 'Small/mid Pvt Ltd'
+    if any(k in up for k in ['GOVERNMENT OF', 'GOVT OF', 'MUNICIPAL',
+                             'AUTHORITY', 'COMMISSION', 'PUBLIC SECTOR']):
+        return 'Government / PSU / authority — large'
+    if any(k in up for k in ['CORPORATION LIMITED', 'CORPORATION LTD',
+                             'CORPN LIMITED']):
+        return 'Corporation (typically large enterprise)'
+    if any(k in up for k in ['BANK LIMITED', 'BANK LTD', ' BANK ', 'INSURANCE',
+                             'SECURITIES LIMITED', 'ASSET MANAGEMENT',
+                             'MUTUAL FUND', 'FINANCE LIMITED', 'CAPITAL LIMITED']):
+        return 'Bank / financial institution (large IT spender)'
+    if 'PRIVATE LIMITED' in up or 'PVT LTD' in up or 'PVT. LTD' in up or 'PVT LIMITED' in up:
+        return 'Private limited (small/mid)'
     if 'LLP' in up or 'LIMITED LIABILITY PARTNERSHIP' in up:
         return 'Limited Liability Partnership (small)'
-    if 'LIMITED' in up:
-        return 'Public limited company (listed/mid-size)'
+    if 'OPC' in up or 'ONE PERSON COMPANY' in up:
+        return 'One Person Company (micro)'
+    if 'LIMITED' in up or up.endswith(' LTD') or up.endswith(' LTD.'):
+        return 'Public limited company (listed/mid-size+)'
     return 'Type unknown'
 
 

@@ -216,7 +216,10 @@ def _build_row(src, enr):
     if pin and not pd.isna(pin):
         row['Postal Code'] = str(int(pin)) if isinstance(pin, (int, float)) else str(pin).strip()
     row['City']    = _city(src.get('District') or src.get('City'))
-    row['State']   = str(src.get('State') or 'Maharashtra').title()
+    # Don't assume Maharashtra — leave blank if the file didn't provide a state.
+    # (AIPL's files cover multiple states; defaulting would mislabel them.)
+    _state = str(src.get('State') or '').strip()
+    row['State']   = _state.title() if _state and _state.lower() != 'nan' else ''
 
     # ---- Enrichment fields ----
     enr = enr or {}
@@ -714,7 +717,10 @@ def _classify_action(r):
                     f'→ "Find CIN/LLPIN" → enter "{str(r["Company"])[:60]}" → '
                     f'CAPTCHA → pull Director details. (Or set AIPL_OPENCORP_KEY '
                     f'env var to auto-fetch via OpenCorporates free API.)')
-        return ('CALL_SWITCHBOARD', f'JustDial search for "{str(r["Company"])[:35]} {r.get("City","Mumbai")} switchboard"')
+        _city_hint = str(r.get("City", "")).strip()  # use the row's city, don't assume Mumbai
+        return ('CALL_SWITCHBOARD',
+                f'JustDial search for "{str(r["Company"])[:35]}'
+                + (f' {_city_hint}' if _city_hint else '') + ' switchboard"')
 
     if is_gatekeeper and not em and not ph:
         return ('NEEDS_RESEARCH',
