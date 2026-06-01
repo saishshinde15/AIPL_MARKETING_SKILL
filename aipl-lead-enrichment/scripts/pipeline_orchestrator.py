@@ -68,6 +68,93 @@ try:
 except ImportError:
     _HAS_COMPANY_CLASSIFIER = False
 
+# v7.5: phone enrichment — company website (free) + Google Places (key-gated)
+try:
+    from website_phone_finder import find_phone as _find_website_phone
+except ImportError:
+    _find_website_phone = None
+try:
+    from google_places_phone import lookup as _google_phone, available as _google_available
+except ImportError:
+    _google_phone = None
+    def _google_available(): return False
+
+
+# Cap how many companies we'll hit the network for in one run (huge files would
+# otherwise make thousands of HTTP requests). Blanks beyond this are left for a
+# later batch. Override with AIPL_PHONE_ENRICH_CAP.
+def _phone_cap():
+    try:
+        return int(os.environ.get('AIPL_PHONE_ENRICH_CAP', '120'))
+    except ValueError:
+        return 120
+
+
+def _enrich_phones(companies, enrichment, summary_lines):
+    """Fill blank phones via company website + Google Places. Bounded, graceful."""
+    enrichment = dict(enrichment or {})
+    web_ok = _find_website_phone is not None
+    goog_ok = _google_available() and _google_phone is not None
+    if not (web_ok or goog_ok):
+        return enrichment  # nothing available — skip silently
+
+    cap = _phone_cap()
+    web_filled = goog_filled = attempts = 0
+    for c in companies:
+        if attempts >= cap:
+            break
+        name = str(c.get('EnterpriseName') or c.get('Company') or '').strip()
+        if not name:
+            continue
+        enr = enrichment.get(name, {})
+        if (enr.get('phone') or '').strip() or (enr.get('mobile') or '').strip():
+            continue  # already has a phone — skip
+        attempts += 1
+        city = str(c.get('District') or c.get('City') or '').strip()
+
+        # 1) Company's own website (free, ethical) — needs a known website
+        website = (enr.get('website') or '').strip()
+        if web_ok and website:
+            try:
+                r = _find_website_phone(website)
+                if r and (r.get('phone') or r.get('mobile')):
+                    enr = dict(enr)
+                    enr['phone']  = enr.get('phone')  or r.get('phone', '')
+                    enr['mobile'] = enr.get('mobile') or r.get('mobile', '')
+                    enr['source_url'] = enr.get('source_url') or r.get('source_url', '')
+                    enr['notes'] = ((enr.get('notes','') + ' | ') if enr.get('notes') else '') + r.get('notes','')
+                    enrichment[name] = enr
+                    web_filled += 1
+                    continue
+            except Exception:
+                pass
+
+        # 2) Google Places (key-gated) — works even with no known website
+        if goog_ok:
+            try:
+                r = _google_phone(name, city)
+                if r and r.get('phone'):
+                    enr = dict(enr)
+                    enr['phone'] = enr.get('phone') or r['phone']
+                    if not enr.get('website') and r.get('website'):
+                        enr['website'] = r['website']
+                    enr['source_url'] = enr.get('source_url') or r.get('source_url', '')
+                    enr['notes'] = ((enr.get('notes','') + ' | ') if enr.get('notes') else '') + r.get('notes','')
+                    enrichment[name] = enr
+                    goog_filled += 1
+            except Exception:
+                pass
+
+    if web_filled or goog_filled:
+        bits = []
+        if web_filled:  bits.append(f"{web_filled} from company websites")
+        if goog_filled: bits.append(f"{goog_filled} from Google Places")
+        summary_lines.append(f"  (Phone enrichment: {', '.join(bits)})")
+    if attempts >= cap:
+        summary_lines.append(f"  (Phone enrichment capped at {cap} companies — "
+                             f"run again to continue with the rest)")
+    return enrichment
+
 
 # ---- Intent detection ----------------------------------------------------
 
@@ -424,6 +511,13 @@ def run(input_files, output_dir, enrichment=None, filename_base='Hygienic_Leads'
                     pass
             if mca_filled:
                 summary_lines.append(f"  (MCA auto-lookup filled {mca_filled} previously-blank cos)")
+
+        # ---- v7.5: Phone enrichment (website + Google Places) ----
+        # For companies with no phone: (1) read their own website's contact page
+        # (free, ethical), then (2) Google Places API if GOOGLE_PLACES_KEY is set.
+        # Both make network calls — in the Claude.ai app sandbox they no-op
+        # gracefully if there's no internet. Bounded to avoid huge-file blowups.
+        enrichment = _enrich_phones(companies, enrichment, summary_lines)
 
         outputs = build_files(companies, enrichment, output_dir, filename_base)
 

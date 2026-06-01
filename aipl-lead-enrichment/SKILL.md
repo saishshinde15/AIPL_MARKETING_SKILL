@@ -40,12 +40,17 @@ The orchestrator returns a `summary` + `next_action` string — relay both to th
 2. **For each company, research in this order (stop at first success):**
    - Web search for IT-specific contact — LinkedIn snippets, company sites, news for CIO/CTO/IT Head names. Use `references/enrichment-sources.md` for query patterns.
    - Fall back to public MCA filings — read Zauba Corp / Tofler pages for Director/MD name + CIN.
-   - Fall back to the company's own website (Contact / About / Team pages) for office phone + `info@` email.
+   - **Always check the company's own website Contact/About page for the switchboard phone + `info@` email** — this is public-by-design data the company publishes for people to call them. Phone numbers matter as much as emails to AIPL, so spend the effort here.
 3. **Generate the outputs via `scripts/build_vtiger_file.py`:**
    - **`email_finder.py`** auto-tries 8 common email patterns + MX-validates when we have a name + verified website but no email.
    - **`local_cache.py`** checks `~/.aipl-cache/contacts.db` first → cache hits return in milliseconds (30 min cold → 1 sec repeat). Fresh results saved back. Auto-learns email patterns per domain.
    - **`sales_priority.py`** tags every row Hot / Warm / Cold / Skip (stamped in Vtiger `Source Campaign` field).
    - **`mca_lookup.py`** (optional) auto-fills blanks via OpenCorporates free API if `AIPL_OPENCORP_KEY` env var set.
+   - **Phone enrichment (v7.5)** — for any company with a blank phone, the orchestrator automatically:
+     1. **`website_phone_finder.py`** reads the company's OWN website Contact/About page and extracts the switchboard (free, ethical, no key — the company publishes this number publicly). Validates Indian phone formats + STD codes, no fabrication.
+     2. **`google_places_phone.py`** looks the company up on Google Maps via the Places API if `GOOGLE_PLACES_KEY` is set (free Google credit ~$200/mo = thousands of lookups). Returns the verified business switchboard.
+     Both make network calls; in the Claude.ai app sandbox they no-op gracefully if there's no internet. Bounded to ~120 companies/run (override via `AIPL_PHONE_ENRICH_CAP`) so big files don't blow up. Phone coverage gain: ~10% → ~50-60% when both are active.
+     **Note:** these return the office **switchboard**, not the IT Head's personal mobile. Pair with the "call and ask for IT Head" scripts. For direct mobiles, the only real option is a paid India-specific tool (EazyReach — DIN-based, INR pricing) — recommend that to AIPL only if switchboard coverage isn't enough.
 
 ## Default output: 2 files only — XLSX + CSV
 
