@@ -94,6 +94,25 @@ def _read_columns(path):
         return set()
 
 
+def _has_company_content(path):
+    """
+    v7.3: detect whether a header-less file actually contains company names.
+    Used to classify files with Unnamed columns as source lists.
+    """
+    if not _HAS_SCHEMA_DETECTOR:
+        return False
+    try:
+        from schema_detector import detect_headerless
+        if str(path).lower().endswith('.xlsx'):
+            df = pd.read_excel(path, nrows=50)
+        else:
+            df = pd.read_csv(path, nrows=50)
+        rename_map, _ = detect_headerless(df)
+        return 'EnterpriseName' in rename_map.values()
+    except Exception:
+        return False
+
+
 def detect_intent(file_paths):
     """
     Classify a set of uploaded files into one of:
@@ -110,7 +129,12 @@ def detect_intent(file_paths):
     for p in file_paths:
         cols = _read_columns(p)
         if not cols:
-            classification[p] = 'unreadable'
+            # v7.3: header read failed (e.g. odd xlsx) — try content detection
+            if _has_company_content(p):
+                classification[p] = 'source_list'
+                has_source = True
+            else:
+                classification[p] = 'unreadable'
             continue
         if cols & VTIGER_COLUMNS == VTIGER_COLUMNS:
             classification[p] = 'master_vtiger'
@@ -131,6 +155,11 @@ def detect_intent(file_paths):
             elif 'company' in cols or 'company name' in cols:
                 classification[p] = 'tool_export:Unknown'
                 has_export = True
+            elif _has_company_content(p):
+                # v7.3: header-less file (Unnamed cols) but content looks like
+                # a company list — treat as source list
+                classification[p] = 'source_list'
+                has_source = True
             else:
                 classification[p] = 'unknown'
 
@@ -253,8 +282,35 @@ def run(input_files, output_dir, enrichment=None, filename_base='Hygienic_Leads'
         # Find the source/master file
         src_path = next(p for p, kind in classification.items()
                         if kind in ('source_list', 'master_vtiger'))
-        df = pd.read_excel(src_path) if src_path.lower().endswith('.xlsx') else pd.read_csv(src_path)
+
+        # v7.3: read ALL sheets in an xlsx and combine (AIPL files sometimes
+        # split data across sheets like "Group - RP DB" + "Private - RP DB")
+        if src_path.lower().endswith('.xlsx'):
+            xl = pd.ExcelFile(src_path)
+            if len(xl.sheet_names) > 1:
+                frames = []
+                for sh in xl.sheet_names:
+                    sdf = xl.parse(sh)
+                    if len(sdf) > 0:
+                        sdf['_source_sheet'] = sh
+                        frames.append(sdf)
+                df = pd.concat(frames, ignore_index=True) if frames else xl.parse(xl.sheet_names[0])
+                summary_lines.append(f"(Combined {len(xl.sheet_names)} sheets: {', '.join(xl.sheet_names)})")
+            else:
+                df = xl.parse(xl.sheet_names[0])
+        else:
+            df = pd.read_csv(src_path)
         df = df.fillna('')
+
+        # v7.3: large-file guard — warn about Claude-message cost before processing
+        if len(df) > 200:
+            est_min = max(5, len(df) // 20)
+            summary_lines.append(
+                f"⚠ LARGE FILE: {len(df)} companies. Full fresh research would take "
+                f"~{est_min}-{est_min*2} min and a big chunk of your Claude message "
+                f"budget. Cached companies are instant; only blanks cost messages. "
+                f"If this is a one-time bulk load, consider splitting into ~200-row "
+                f"batches across a few sessions.")
 
         # v6: auto-normalize variable column names (Company/EnterpriseName/etc.)
         if _HAS_SCHEMA_DETECTOR and classification[src_path] == 'source_list':

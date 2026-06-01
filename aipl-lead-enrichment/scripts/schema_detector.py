@@ -141,13 +141,90 @@ def detect_schema(df):
     return mapping, warnings
 
 
+# Keywords that signal a cell contains a company name (for header-less detection)
+_COMPANY_KEYWORDS = [
+    'limited', 'ltd', 'pvt', 'private', 'llp', '& co', 'and co', 'company',
+    'services', 'bank', 'finance', 'industries', 'corporation', 'corp',
+    'enterprises', 'technologies', 'solutions', 'securities', 'capital',
+    'holdings', 'ventures', 'pharma', 'systems', 'infotech', 'consultancy',
+    'manufacturing', 'trading', 'exports', 'imports', 'international',
+]
+
+
+def _company_likeness(series):
+    """Score 0+ how likely a column holds company names. Higher = more likely."""
+    vals = [str(v).strip() for v in series
+            if str(v).strip() and str(v).strip().lower() != 'nan']
+    if not vals:
+        return 0.0
+    n = len(vals)
+    kw_ratio  = sum(1 for v in vals if any(k in v.lower() for k in _COMPANY_KEYWORDS)) / n
+    avg_len   = sum(len(v) for v in vals) / n
+    uniq_ratio = len(set(vals)) / n
+    # Company columns: keyword-rich, long, mostly unique
+    return (kw_ratio * 3.0) + min(avg_len / 20.0, 1.5) + uniq_ratio
+
+
+def _looks_like_category(series):
+    """True if a column has few unique short values (a sector/category column)."""
+    vals = [str(v).strip() for v in series
+            if str(v).strip() and str(v).strip().lower() != 'nan']
+    if not vals:
+        return False
+    uniq = len(set(vals))
+    avg_len = sum(len(v) for v in vals) / len(vals)
+    # Category: <=15 distinct values, short text (e.g. "HFC", "NBFC", "Financial Services")
+    return uniq <= 15 and avg_len < 30
+
+
+def detect_headerless(df):
+    """
+    For files with no real header (cols named Unnamed: 0/1/...), heuristically
+    find the company-name column + an optional category column.
+
+    Returns (rename_map, warnings) where rename_map maps the detected columns
+    to 'EnterpriseName' (and 'Industry' if a category col is found).
+    """
+    rename_map, warnings = {}, []
+
+    # Score every column for company-name-likeness
+    scores = {col: _company_likeness(df[col]) for col in df.columns}
+    if not scores or max(scores.values()) < 1.0:
+        return {}, ['Could not auto-detect a company-name column in a header-less file']
+
+    best_col = max(scores, key=scores.get)
+    rename_map[best_col] = 'EnterpriseName'
+    warnings.append(f"No header row detected — using column '{best_col}' as company name "
+                    f"(auto-detected by content)")
+
+    # Look for a category/sector column among the rest → Industry hint
+    for col in df.columns:
+        if col == best_col:
+            continue
+        if _looks_like_category(df[col]):
+            rename_map[col] = 'Industry'
+            warnings.append(f"Using column '{col}' as Industry/sector (category values detected)")
+            break
+
+    return rename_map, warnings
+
+
 def normalize_dataframe(df):
     """
     Rename input columns to canonical names. Add empty columns for missing ones.
+    Falls back to content-based detection for header-less files.
 
     Returns: (normalized_df, mapping, warnings)
     """
     mapping, warnings = detect_schema(df)
+
+    # If we didn't find a company-name column via headers, try header-less detection
+    if 'EnterpriseName' not in mapping.values():
+        hl_map, hl_warnings = detect_headerless(df)
+        if hl_map:
+            mapping.update(hl_map)
+            warnings = [w for w in warnings if not w.startswith('❌')]  # clear the fail
+            warnings.extend(hl_warnings)
 
     # Rename
     df = df.rename(columns=mapping)
