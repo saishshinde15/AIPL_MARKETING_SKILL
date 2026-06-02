@@ -41,7 +41,7 @@ ROLE_OPENER = {
     # Decision-makers — speak peer-to-peer
     'VP IT / CISO / CTO':
         "Hi {name}, I'm {your_name} from AIPL Networks. I work with {industry_phrase} on their IT infrastructure. "
-        "I noticed {company} is in {city} — wanted to briefly explore whether we'd be relevant for your "
+        "I came across {company}{city_clause} — wanted to briefly explore whether we'd be relevant for your "
         "{industry_value_prop}. Do you have 30 seconds, or should I send a one-pager and call back?",
 
     'IT Manager / IT Head':
@@ -128,7 +128,8 @@ def generate_script(row, your_name="[your name]"):
     Returns a markdown-formatted phone script for one contact row.
     """
     company  = str(row.get('Company',''))
-    city     = str(row.get('City','') or 'Mumbai')
+    # Use the row's actual city — never assume Mumbai (files cover many cities).
+    city     = str(row.get('City','')).strip()
     industry = str(row.get('Industry','') or '').strip()
     fn       = str(row.get('First Name','')).strip()
     ln       = str(row.get('Last Name','')).strip()
@@ -138,10 +139,12 @@ def generate_script(row, your_name="[your name]"):
     name        = (fn + ' ' + ln).strip() or 'sir/madam'
     industry_phrase   = _industry_phrase(industry)
     industry_pitch    = INDUSTRY_PITCH.get(industry, INDUSTRY_PITCH[''])
+    # Optional city clause — only inserted when we actually know the city
+    city_clause = f" in {city}" if city else ""
 
     out = []
     out.append(f"### {company}")
-    out.append(f"_{industry or 'Industry unknown'} · {city} · Priority: {row.get('Source Campaign','—')}_")
+    out.append(f"_{industry or 'Industry unknown'} · {city or 'city unknown'} · Priority: {row.get('Source Campaign','—')}_")
     out.append("")
 
     if phone:
@@ -164,7 +167,8 @@ def generate_script(row, your_name="[your name]"):
             tmpl = ROLE_OPENER['Gatekeeper - Unknown Role']
         script = tmpl.format(
             name=name, your_name=your_name, company=company,
-            city=city, industry_phrase=industry_phrase,
+            city=city, city_clause=city_clause,
+            industry_phrase=industry_phrase,
             industry_value_prop=industry_pitch,
         )
         out.append(f"**Ask for:** {name} — {desg}")
