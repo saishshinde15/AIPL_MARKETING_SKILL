@@ -127,6 +127,15 @@ def _fetch(url):
     return ''
 
 
+# Keywords that signal an IT-department / helpdesk phone (CEO's "IT dept #" idea)
+_IT_DEPT_KEYWORDS = [
+    'it department', 'it dept', 'it helpdesk', 'it help desk', 'it support',
+    'it team', 'it cell', 'technical support', 'tech support', 'service desk',
+    'help desk', 'helpdesk', 'edp', 'mis department', 'systems department',
+    'information technology', 'it head', 'it manager', 'it admin',
+]
+
+
 def _extract_phones(html):
     """Return list of validated unique Indian phones from HTML text.
     tel: links are trusted (explicit markup). Regex matches must carry phone
@@ -146,6 +155,25 @@ def _extract_phones(html):
         if fmt and _is_plausible(fmt) and fmt not in seen:
             seen.add(fmt); found.append(fmt)
     return found
+
+
+def _find_it_dept_phone(html):
+    """Find a phone number that appears NEAR an IT-department keyword.
+    Returns the formatted phone or '' if none. (CEO's IT-dept-number idea.)"""
+    text = re.sub(r'<[^>]+>', ' ', html)          # strip tags → plain text
+    text_lower = text.lower()
+    for kw in _IT_DEPT_KEYWORDS:
+        idx = text_lower.find(kw)
+        while idx != -1:
+            # look in a window around the keyword for a phone candidate
+            window = text[max(0, idx - 60): idx + len(kw) + 120]
+            for raw in _PHONE_CANDIDATE.findall(window):
+                had_structure = bool(re.search(r'\+?91|\(0?\d{2,4}\)|^0\d', raw.strip()))
+                fmt = _normalize(raw, had_structure=had_structure)
+                if fmt and _is_plausible(fmt):
+                    return fmt
+            idx = text_lower.find(kw, idx + 1)
+    return ''
 
 
 def find_phone(website):
@@ -168,20 +196,22 @@ def find_phone(website):
     parsed = urlparse(site)
     base = f'{parsed.scheme}://{parsed.netloc}'
 
-    all_found, source = [], ''
+    all_found, source, it_phone = [], '', ''
     for path in CONTACT_PATHS:
         url = urljoin(base + '/', path)
         html = _fetch(url)
         if not html:
             continue
         phones = _extract_phones(html)
+        if not it_phone:
+            it_phone = _find_it_dept_phone(html)   # CEO's IT-dept-number idea
         if phones:
             all_found = phones
             source = url
             # Contact pages are higher-confidence; stop once we hit one
             if path and path not in ('about', 'about-us', 'aboutus'):
                 break
-    if not all_found:
+    if not all_found and not it_phone:
         return {}
 
     # Split landline (switchboard) vs mobile
@@ -192,14 +222,21 @@ def find_phone(website):
 
     landlines = [p for p in all_found if not _is_mobile(p)]
     mobiles   = [p for p in all_found if _is_mobile(p)]
+    switchboard = landlines[0] if landlines else (mobiles[0] if mobiles else '')
+
+    note = f'Company phone from website ({source})' if source else ''
+    if it_phone:
+        note = (note + ' | ' if note else '') + f'IT-dept line: {it_phone}'
 
     return {
-        'phone':      landlines[0] if landlines else '',
-        'mobile':     mobiles[0] if mobiles else '',
-        'source_url': source,
-        'confidence': 'High',   # straight off the company's own site
-        'all_found':  all_found,
-        'notes':      f'Switchboard from company website ({source})',
+        'phone':        switchboard,                 # company switchboard = backup
+        'mobile':       mobiles[0] if mobiles else '',
+        'it_phone':     it_phone,                     # CEO's IT-dept number (may be '')
+        'company_phone': switchboard,                 # explicit "company backup" alias
+        'source_url':   source,
+        'confidence':   'High',   # straight off the company's own site
+        'all_found':    all_found,
+        'notes':        note,
     }
 
 

@@ -103,16 +103,32 @@ def _normalize_phone(p):
     if not p: return ''
     p = str(p).strip()
     if not p or p.lower() == 'nan': return ''
+    p = str(p).strip()
     digits = re.sub(r'[^\d]', '', p)
-    if digits.startswith('91') and len(digits) == 12:
-        return f'+91-{digits[2:4]}-{digits[4:8]}-{digits[8:]}'
-    if len(digits) == 11 and digits.startswith('0'):
-        return f'+91-{digits[1:3]}-{digits[3:7]}-{digits[7:]}'
-    if len(digits) == 10:
-        return f'+91-{digits[:5]}-{digits[5:]}'
-    if len(digits) == 12 and digits.startswith('91'):
-        return f'+91-{digits[2:7]}-{digits[7:]}'
-    return p  # leave unchanged if doesn't fit any known pattern
+    # Reduce to the 10-digit national number (strip +91 / leading 0)
+    core = digits
+    if core.startswith('91') and len(core) == 12:
+        core = core[2:]
+    elif core.startswith('0') and len(core) == 11:
+        core = core[1:]
+    if len(core) != 10:
+        return p  # not a standard 10-digit national number — leave as-is
+
+    # Use the ORIGINAL formatting to disambiguate mobile vs landline:
+    # the first digit-group is 5 for a mobile (98765-43210) but 2-3 for a
+    # landline STD code (022-..., 80-...). This avoids mis-reading a Bangalore
+    # (80) / Ahmedabad (79) landline as a mobile just because it starts 8/7.
+    rest = re.sub(r'^\+?\s*91[\s\-.]?|^0', '', p)          # drop +91 / leading 0
+    fg = re.match(r'[^\d]*(\d+)', rest)
+    first_group_len = len(fg.group(1)) if fg else 0
+
+    is_mobile = core[0] in '6789' and first_group_len not in (2, 3, 4)
+    if is_mobile:
+        return f'+91-{core[:5]}-{core[5:]}'
+    # Landline: 2-digit metro STD vs 3-digit STD
+    if core[:2] in {'11','20','22','33','40','44','79','80'}:
+        return f'+91-{core[:2]}-{core[2:6]}-{core[6:]}'
+    return f'+91-{core[:3]}-{core[3:6]}-{core[6:]}'
 
 def _infer_industry(company):
     """Infer industry from explicit company-name keywords.
@@ -235,7 +251,14 @@ def _build_row(src, enr):
     row['Last Name']     = ln
     row['Designation']   = mapped_title
     row['Primary Email'] = (enr.get('email') or '').strip()
-    row['Office Phone']  = _normalize_phone(enr.get('phone'))
+    # ---- Phone tiers (CEO's backup idea) ----
+    # Office Phone = the best line we have: contact's office number, else the
+    # company switchboard (so EVERY company with a findable number is callable).
+    # Mobile Phone = contact's direct mobile if known.
+    contact_phone   = _normalize_phone(enr.get('phone'))
+    company_phone   = _normalize_phone(enr.get('company_phone'))
+    it_dept_phone   = _normalize_phone(enr.get('it_phone'))
+    row['Office Phone']  = contact_phone or company_phone   # guaranteed backup
     row['Mobile Phone']  = _normalize_phone(enr.get('mobile'))
     row['Website']       = _clean_website(enr.get('website'))
 
@@ -262,6 +285,11 @@ def _build_row(src, enr):
 
     # ---- Additional Details: stash provenance ----
     details = []
+    # CEO's backup idea — surface the IT-dept line + company switchboard prominently
+    if it_dept_phone:
+        details.append(f'IT DEPT PHONE: {it_dept_phone} (direct line into IT — try first)')
+    if company_phone and company_phone != row['Office Phone']:
+        details.append(f'COMPANY SWITCHBOARD (backup): {company_phone}')
     # Only flag if the title looked IT-like at first glance but didn't match an IT bucket
     # (mapped_title starts with "Gatekeeper -" already communicates the rest)
     if (fn or ln) and not is_it_role and found_title and not mapped_title.startswith('Gatekeeper'):

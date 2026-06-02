@@ -52,7 +52,7 @@ The orchestrator returns a `summary` + `next_action` string — relay both to th
      3. **Listed cos → BSE/NSE company page + annual report** registered-office phone.
      4. **Public social/marketplace profiles** — LinkedIn company page, Facebook, Instagram business, IndiaMART seller profile (read published numbers; don't bulk-scrape).
      5. **Sector / chamber-of-commerce directories** (CII/FICCI/NASSCOM + regional) — especially when the file is sector-segmented (NBFC/Securities/HFC).
-     **For EVERY company with no contact found, at minimum grab the switchboard this way so the team can cold-call.** Always cite the source. Realistic free phone coverage: ~45-60%, zero cost, zero card.
+     **3-tier phone capture (make every lead callable):** (1) IT Head's direct line/mobile if found → Mobile Phone; (2) **IT department / helpdesk number** if the company publishes one → noted as `IT DEPT PHONE:` in Additional Details (a warm direct line into IT — `website_phone_finder.py` auto-detects it by finding a number near IT/helpdesk/support keywords); (3) **company switchboard as the guaranteed backup** → Office Phone. **ALWAYS grab the company switchboard for EVERY company** so no lead is ever uncallable — this alone takes phone coverage to ~75%+. Also search explicitly for the IT line: `"<Company>" IT helpdesk OR "IT department" phone`. Always cite the source.
      `google_places_phone.py` exists but is **dormant** (needs a card) — leave it off.
      **Note:** these are office **switchboards**, not the IT Head's direct mobile. Pair with the "ask for IT Head" scripts. Direct mobiles are paid-only (EazyReach, India-specific) — recommend to AIPL only if switchboard coverage isn't enough.
 

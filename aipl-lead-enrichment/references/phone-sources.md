@@ -12,6 +12,27 @@ leave it blank. Always cite where the number came from in `Additional Details`.
 
 ---
 
+## The 3-tier phone model (capture ALL tiers you can find)
+
+The goal isn't just "the IT Head's number" — it's **making every lead callable**.
+Capture as many of these as exist, best → fallback:
+
+| Tier | What | Goes in | How common |
+|---|---|---|---|
+| 1. **IT Head direct line / mobile** | the decision-maker's own number | Mobile Phone | rare (~10%) |
+| 2. **IT department / helpdesk number** | a dedicated line into IT — warm entry to the buying centre | `Additional Details` → `IT DEPT PHONE:` | some (~15-25%) |
+| 3. **Company switchboard** | the main office number — the **guaranteed backup** | Office Phone | almost always (~75%) |
+
+**Always grab Tier 3 (the company switchboard) for EVERY company** — it means no
+lead is ever uncallable. Then add Tier 2 (IT dept line) where published, and
+Tier 1 (direct) when you can. `website_phone_finder.py` auto-detects Tier 2 by
+finding a number near IT/helpdesk/support keywords on the company's site.
+
+When searching, explicitly look for the IT line too:
+`"<Company>" IT helpdesk OR "IT department" OR "IT support" phone`
+
+---
+
 ## The waterfall — try in this order, stop at first solid hit
 
 ### 1. Google "business card" via a normal web search  ⭐ highest yield

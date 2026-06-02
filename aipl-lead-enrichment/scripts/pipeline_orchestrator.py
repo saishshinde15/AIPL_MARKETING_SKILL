@@ -117,10 +117,14 @@ def _enrich_phones(companies, enrichment, summary_lines):
         if web_ok and website:
             try:
                 r = _find_website_phone(website)
-                if r and (r.get('phone') or r.get('mobile')):
+                if r and (r.get('phone') or r.get('mobile') or r.get('it_phone')):
                     enr = dict(enr)
                     enr['phone']  = enr.get('phone')  or r.get('phone', '')
                     enr['mobile'] = enr.get('mobile') or r.get('mobile', '')
+                    # CEO's idea: keep the company switchboard as a guaranteed
+                    # backup + capture a dedicated IT-department line if published
+                    enr['company_phone'] = enr.get('company_phone') or r.get('company_phone', '')
+                    enr['it_phone']       = enr.get('it_phone')      or r.get('it_phone', '')
                     enr['source_url'] = enr.get('source_url') or r.get('source_url', '')
                     enr['notes'] = ((enr.get('notes','') + ' | ') if enr.get('notes') else '') + r.get('notes','')
                     enrichment[name] = enr
