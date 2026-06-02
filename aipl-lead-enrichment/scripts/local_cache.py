@@ -44,7 +44,7 @@ CACHE_DIR.mkdir(parents=True, exist_ok=True)
 DB_PATH = CACHE_DIR / "contacts.db"
 
 # Bump this number when adding columns; migration runs automatically.
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 # Soft TTL: cached entries older than this are flagged stale, but still returned
 # (so the team has SOMETHING to call). The skill can decide whether to refresh.
@@ -135,6 +135,18 @@ class Cache:
                 CREATE INDEX IF NOT EXISTS idx_companies_city   ON companies(city);
             """)
             c.execute("INSERT OR REPLACE INTO _meta (key, value) VALUES ('schema_version', '1')")
+
+        # ---- Schema v2: company-switchboard + IT-department phone backups ----
+        # (v7.7.2) Without these, the cache silently dropped the switchboard +
+        # IT-dept numbers on every repeat run, halving phone coverage weekly.
+        if current < 2:
+            existing_cols = {r[1] for r in c.execute("PRAGMA table_info(contacts)")}
+            if 'company_phone' not in existing_cols:
+                c.execute("ALTER TABLE contacts ADD COLUMN company_phone TEXT")
+            if 'it_phone' not in existing_cols:
+                c.execute("ALTER TABLE contacts ADD COLUMN it_phone TEXT")
+            c.execute("INSERT OR REPLACE INTO _meta (key, value) VALUES ('schema_version', '2')")
+
         self._db.commit()
 
     # ---- Company lookup ----
@@ -265,6 +277,10 @@ class Cache:
             "email":          email,
             "phone":          (contact.get("phone")  or "").strip(),
             "mobile":         (contact.get("mobile") or "").strip(),
+            # v7.7.2: persist the switchboard + IT-dept backups so they survive
+            # repeat runs (was the root cause of phone coverage halving on rebuild)
+            "company_phone":  (contact.get("company_phone") or "").strip(),
+            "it_phone":       (contact.get("it_phone") or "").strip(),
             "linkedin":       (contact.get("linkedin") or "").strip(),
             "source_url":     (contact.get("source_url") or "").strip(),
             "confidence":     (contact.get("confidence") or "").strip(),
@@ -279,7 +295,10 @@ class Cache:
                 UPDATE contacts SET
                     first_name = :first_name, last_name = :last_name,
                     designation = :designation, email = :email,
-                    phone = :phone, mobile = :mobile, linkedin = :linkedin,
+                    phone = :phone, mobile = :mobile,
+                    company_phone = COALESCE(NULLIF(:company_phone,''), company_phone),
+                    it_phone = COALESCE(NULLIF(:it_phone,''), it_phone),
+                    linkedin = :linkedin,
                     source_url = :source_url, confidence = :confidence,
                     notes = :notes, last_verified = :last_verified,
                     verified_by_team = MAX(verified_by_team, :verified_by_team)
@@ -288,11 +307,12 @@ class Cache:
         else:
             c.execute("""
                 INSERT INTO contacts (norm_company, first_name, last_name, designation,
-                    email, phone, mobile, linkedin, source_url, confidence, notes,
-                    first_seen, last_verified, verified_by_team)
+                    email, phone, mobile, company_phone, it_phone, linkedin, source_url,
+                    confidence, notes, first_seen, last_verified, verified_by_team)
                 VALUES (:norm_company, :first_name, :last_name, :designation,
-                    :email, :phone, :mobile, :linkedin, :source_url, :confidence,
-                    :notes, :first_seen, :last_verified, :verified_by_team)
+                    :email, :phone, :mobile, :company_phone, :it_phone, :linkedin,
+                    :source_url, :confidence, :notes, :first_seen, :last_verified,
+                    :verified_by_team)
             """, params)
         self._db.commit()
 

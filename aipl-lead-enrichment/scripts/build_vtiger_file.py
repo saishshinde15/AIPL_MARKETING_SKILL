@@ -391,6 +391,12 @@ def _merge_cache_into_enrichment(companies, enrichment):
                 'email':       fresh.get('email')       or cached_email,
                 'phone':       fresh.get('phone')       or cached.get('phone', ''),
                 'mobile':      fresh.get('mobile')      or cached.get('mobile', ''),
+                # v7.7.2 FIX: preserve the company-switchboard + IT-dept backups
+                # through the cache. Without these two lines, every cache hit
+                # silently dropped the switchboard numbers (halving phone coverage
+                # on repeat runs).
+                'company_phone': fresh.get('company_phone') or cached.get('company_phone', ''),
+                'it_phone':      fresh.get('it_phone')      or cached.get('it_phone', ''),
                 'website':     fresh.get('website')     or hit['company'].get('website', ''),
                 'linkedin':    fresh.get('linkedin')    or cached.get('linkedin', ''),
                 'source_url':  fresh.get('source_url')  or cached.get('source_url', ''),
