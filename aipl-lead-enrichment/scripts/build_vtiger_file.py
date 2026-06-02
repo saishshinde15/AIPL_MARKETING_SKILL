@@ -105,6 +105,15 @@ def _normalize_phone(p):
     if not p or p.lower() == 'nan': return ''
     p = str(p).strip()
     digits = re.sub(r'[^\d]', '', p)
+
+    # Toll-free (1800 / 1860): valid = 1800/1860 + 6-7 digits (10-11 total).
+    # Format valid ones consistently; flag a wrong-length one so the team verifies
+    # instead of dialing a broken number.
+    if digits.startswith(('1800', '1860')):
+        if len(digits) in (10, 11):
+            return f'{digits[:4]}-{digits[4:7]}-{digits[7:]}'
+        return f'{p}  (⚠ check length)'   # e.g. 1800-120-777778 (13 digits)
+
     # Reduce to the 10-digit national number (strip +91 / leading 0)
     core = digits
     if core.startswith('91') and len(core) == 12:
