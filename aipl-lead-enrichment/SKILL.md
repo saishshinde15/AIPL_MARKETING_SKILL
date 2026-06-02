@@ -52,7 +52,27 @@ The orchestrator returns a `summary` + `next_action` string — relay both to th
      3. **Listed cos → BSE/NSE company page + annual report** registered-office phone.
      4. **Public social/marketplace profiles** — LinkedIn company page, Facebook, Instagram business, IndiaMART seller profile (read published numbers; don't bulk-scrape).
      5. **Sector / chamber-of-commerce directories** (CII/FICCI/NASSCOM + regional) — especially when the file is sector-segmented (NBFC/Securities/HFC).
-     **3-tier phone capture (make every lead callable):** (1) IT Head's direct line/mobile if found → Mobile Phone; (2) **IT department / helpdesk number** if the company publishes one → noted as `IT DEPT PHONE:` in Additional Details (a warm direct line into IT — `website_phone_finder.py` auto-detects it by finding a number near IT/helpdesk/support keywords); (3) **company switchboard as the guaranteed backup** → Office Phone. **ALWAYS grab the company switchboard for EVERY company** so no lead is ever uncallable — this alone takes phone coverage to ~75%+. Also search explicitly for the IT line: `"<Company>" IT helpdesk OR "IT department" phone`. Always cite the source.
+     **🔴 MANDATORY — EVERY company must end with a phone number. No exceptions.**
+     The most common failure is finding a person's NAME and stopping — leaving the
+     row with a contact but no phone. That is a HALF-DONE lead. A named contact the
+     team can't call is nearly useless. So for **every single company**, you MUST
+     capture the **company switchboard** as a backup, *even when you already found
+     the IT Head's name*. Finding the name does NOT mean you're done — you're only
+     done when the row has at least one callable number.
+
+     **3-tier phone capture (best → fallback, capture ALL you can):**
+     1. IT Head's direct line/mobile → Mobile Phone (best, rare)
+     2. **IT department / helpdesk number** → noted `IT DEPT PHONE:` in Additional Details (warm direct line into IT)
+     3. **Company switchboard → Office Phone (THE GUARANTEED BACKUP — always get this for every company)**
+
+     Concretely, while researching each company, ALSO run one quick lookup for its
+     main number: `"<Company>" <city> phone` or `"<Company>" contact number` — the
+     switchboard is almost always in the Google business card or the company's
+     Contact page. Put it in the enrichment dict's `company_phone` field. If you
+     genuinely found a name but no number anywhere, that's an exception to flag —
+     but it should be RARE, not 30% of named rows.
+
+     Also search explicitly for the IT line: `"<Company>" IT helpdesk OR "IT department" phone`. Always cite the source. Target: ~90% of companies with at least the switchboard.
      `google_places_phone.py` exists but is **dormant** (needs a card) — leave it off.
      **Note:** these are office **switchboards**, not the IT Head's direct mobile. Pair with the "ask for IT Head" scripts. Direct mobiles are paid-only (EazyReach, India-specific) — recommend to AIPL only if switchboard coverage isn't enough.
 

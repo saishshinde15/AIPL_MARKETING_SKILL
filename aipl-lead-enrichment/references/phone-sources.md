@@ -7,7 +7,13 @@ Phones matter as much as emails to AIPL. The smart way to get them for free is
 This works in the Claude.ai desktop app because Claude does the searching with
 its own web tools — it does not depend on the code sandbox having internet.
 
-**Golden rule:** never fabricate. If no phone appears on any public surface,
+**Golden rule #1 — every company gets a number.** Finding the person's NAME is
+NOT the finish line. For EVERY company you research, also grab the company
+switchboard (one quick `"<Company>" <city> phone` lookup) and put it in
+`company_phone`. A named contact with no phone is a half-done lead the team
+can't act on. Target ~90% of rows with at least the switchboard.
+
+**Golden rule #2 — never fabricate.** If no phone appears on any public surface,
 leave it blank. Always cite where the number came from in `Additional Details`.
 
 ---
