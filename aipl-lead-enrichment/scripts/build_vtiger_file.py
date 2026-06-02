@@ -258,7 +258,10 @@ def _build_row(src, enr):
     contact_phone   = _normalize_phone(enr.get('phone'))
     company_phone   = _normalize_phone(enr.get('company_phone'))
     it_dept_phone   = _normalize_phone(enr.get('it_phone'))
-    row['Office Phone']  = contact_phone or company_phone   # guaranteed backup
+    # Backup chain (best → fallback): contact's own line → IT department line
+    # → company switchboard. The IT-dept number is a BETTER backup than the
+    # switchboard because it reaches IT directly instead of reception.
+    row['Office Phone']  = contact_phone or it_dept_phone or company_phone
     row['Mobile Phone']  = _normalize_phone(enr.get('mobile'))
     row['Website']       = _clean_website(enr.get('website'))
 
@@ -285,9 +288,16 @@ def _build_row(src, enr):
 
     # ---- Additional Details: stash provenance ----
     details = []
-    # CEO's backup idea — surface the IT-dept line + company switchboard prominently
-    if it_dept_phone:
-        details.append(f'IT DEPT PHONE: {it_dept_phone} (direct line into IT — try first)')
+    # CEO's backup idea — label which tier the Office Phone is + list the backups.
+    if contact_phone:
+        details.append("PHONE TIER: contact's own line (Office Phone)")
+    elif it_dept_phone and row['Office Phone'] == it_dept_phone:
+        details.append('PHONE TIER: IT-department line in Office Phone (backup 1 — reaches IT directly)')
+    elif company_phone and row['Office Phone'] == company_phone:
+        details.append('PHONE TIER: company switchboard in Office Phone (backup 2 — ask reception for IT Head)')
+    # Always list the other backups so the team has fallbacks
+    if it_dept_phone and it_dept_phone != row['Office Phone']:
+        details.append(f'IT DEPT PHONE (backup): {it_dept_phone} — direct line into IT')
     if company_phone and company_phone != row['Office Phone']:
         details.append(f'COMPANY SWITCHBOARD (backup): {company_phone}')
     # Only flag if the title looked IT-like at first glance but didn't match an IT bucket
