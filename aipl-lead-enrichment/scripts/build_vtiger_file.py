@@ -80,7 +80,7 @@ COMMON_FEMALE = {
 
 # Industry inference from company-name keywords
 INDUSTRY_KEYWORDS = [
-    ('Financial Services', ['financial','finance','capital','securities','banking','investments','broking','asset','nidhi']),
+    ('Financial Services', ['financial','finance','capital','securities','bank','banking','investments','broking','asset','nidhi']),
     ('Oil & Gas',          ['oil','gas','petroleum','energy','natural gas']),
     ('Construction & Infra',['construction','builders','infra','realty','cement','steel','engineering','epc']),
     ('Logistics & Shipping',['logistics','shipping','transport','translogistics','transformers','cargo']),
