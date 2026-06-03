@@ -282,11 +282,13 @@ def _build_row(src, enr):
             from email_finder import find_email
             r = find_email(fn, ln, row['Website'])
             if r and r.get('email') and r.get('mx_ok'):
-                row['Primary Email'] = r['email']
-                # Stash provenance so the team knows this is MX-validated not verified
+                # Mark a pattern-GUESS clearly so nobody mistakes it for verified.
+                # Real (researched/harvested) emails are never touched by this path.
+                row['Primary Email'] = r['email'] + ' (pattern-guess — verify)'
                 enr = dict(enr)
                 enr['notes'] = ((enr.get('notes') or '') +
-                    f" | Email auto-derived: {r['method']}").strip(' |')
+                    f" | ⚠ Email is a PATTERN GUESS (not verified): {r['method']} — "
+                    f"confirm before bulk-sending").strip(' |')
         except Exception:
             pass  # never fail the build over an enrichment helper
 

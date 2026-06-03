@@ -157,6 +157,35 @@ def _extract_phones(html):
     return found
 
 
+# Real-email harvesting (masterclass): pull PUBLISHED emails off the company's
+# own pages. These are real (the company published them), unlike pattern-guesses.
+_EMAIL_RE = re.compile(r'[\w.+-]+@[\w-]+\.[\w.-]+', re.IGNORECASE)
+_EMAIL_JUNK_DOMAINS = ('example.com', 'domain.com', 'email.com', 'sentry.io',
+                       'wixpress.com', 'godaddy.com', '.png', '.jpg', '.gif',
+                       '.svg', '.webp', '@2x')
+
+def _extract_emails(html, site_domain=''):
+    """Return real published emails from page HTML, company-domain ones first."""
+    found, seen = [], set()
+    # mailto: links are explicit + highest trust
+    for m in re.findall(r'mailto:([\w.+-]+@[\w.-]+)', html, re.IGNORECASE):
+        e = m.strip().lower()
+        if e not in seen and not any(j in e for j in _EMAIL_JUNK_DOMAINS):
+            seen.add(e); found.append(e)
+    # plain-text emails in the page
+    for m in _EMAIL_RE.findall(html):
+        e = m.strip().lower().rstrip('.')
+        if (e not in seen and '@' in e and '.' in e.split('@')[1]
+                and not any(j in e for j in _EMAIL_JUNK_DOMAINS)
+                and len(e) < 60):
+            seen.add(e); found.append(e)
+    # Prefer emails on the company's own domain (real corporate addresses)
+    if site_domain:
+        d = site_domain.lower().lstrip('www.')
+        found.sort(key=lambda e: 0 if e.endswith('@'+d) or d in e.split('@')[-1] else 1)
+    return found
+
+
 def _find_it_dept_phone(html):
     """Find a phone number that appears NEAR an IT-department keyword.
     Returns the formatted phone or '' if none. (CEO's IT-dept-number idea.)"""
@@ -197,12 +226,15 @@ def find_phone(website):
     base = f'{parsed.scheme}://{parsed.netloc}'
 
     all_found, source, it_phone = [], '', ''
+    emails = []
     for path in CONTACT_PATHS:
         url = urljoin(base + '/', path)
         html = _fetch(url)
         if not html:
             continue
         phones = _extract_phones(html)
+        if not emails:
+            emails = _extract_emails(html, parsed.netloc)   # masterclass: real emails
         if not it_phone:
             it_phone = _find_it_dept_phone(html)   # CEO's IT-dept-number idea
         if phones:
@@ -211,7 +243,7 @@ def find_phone(website):
             # Contact pages are higher-confidence; stop once we hit one
             if path and path not in ('about', 'about-us', 'aboutus'):
                 break
-    if not all_found and not it_phone:
+    if not all_found and not it_phone and not emails:
         return {}
 
     # Split landline (switchboard) vs mobile
@@ -233,6 +265,8 @@ def find_phone(website):
         'mobile':       mobiles[0] if mobiles else '',
         'it_phone':     it_phone,                     # CEO's IT-dept number (may be '')
         'company_phone': switchboard,                 # explicit "company backup" alias
+        'email':        emails[0] if emails else '',  # masterclass: REAL published email
+        'all_emails':   emails,
         'source_url':   source,
         'confidence':   'High',   # straight off the company's own site
         'all_found':    all_found,

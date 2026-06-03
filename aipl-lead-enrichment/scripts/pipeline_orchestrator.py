@@ -117,7 +117,7 @@ def _enrich_phones(companies, enrichment, summary_lines):
         if web_ok and website:
             try:
                 r = _find_website_phone(website)
-                if r and (r.get('phone') or r.get('mobile') or r.get('it_phone')):
+                if r and (r.get('phone') or r.get('mobile') or r.get('it_phone') or r.get('email')):
                     enr = dict(enr)
                     enr['phone']  = enr.get('phone')  or r.get('phone', '')
                     enr['mobile'] = enr.get('mobile') or r.get('mobile', '')
@@ -125,6 +125,11 @@ def _enrich_phones(companies, enrichment, summary_lines):
                     # backup + capture a dedicated IT-department line if published
                     enr['company_phone'] = enr.get('company_phone') or r.get('company_phone', '')
                     enr['it_phone']       = enr.get('it_phone')      or r.get('it_phone', '')
+                    # Masterclass: a REAL published email beats a pattern guess.
+                    # Only fill if we don't already have a (researched) email.
+                    if not enr.get('email') and r.get('email'):
+                        enr['email'] = r['email']
+                        enr['email_verified'] = True   # harvested from the company's own page
                     enr['source_url'] = enr.get('source_url') or r.get('source_url', '')
                     enr['notes'] = ((enr.get('notes','') + ' | ') if enr.get('notes') else '') + r.get('notes','')
                     enrichment[name] = enr
