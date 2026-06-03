@@ -224,7 +224,7 @@ def merge_exports(master_file, export_files, output_dir='/mnt/user-data/outputs'
     wb.save(xlsx_path)
 
     with open(csv_path, 'w', encoding='utf-8', newline='') as f:
-        w = csv.DictWriter(f, fieldnames=VTIGER_HEADERS, delimiter=',', quoting=csv.QUOTE_ALL)
+        w = csv.DictWriter(f, fieldnames=VTIGER_HEADERS, delimiter=',', quoting=csv.QUOTE_ALL, extrasaction='ignore')
         w.writeheader()
         for _, r in master.iterrows():
             w.writerow({h: r.get(h, '') for h in VTIGER_HEADERS})

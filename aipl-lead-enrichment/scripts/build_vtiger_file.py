@@ -174,46 +174,98 @@ def _salutation(first):
         return 'Ms.'
     return 'Mr.'
 
+# Acronyms kept UPPERCASE when tidying an all-lower / all-upper title
+_TITLE_ACRONYMS = {'it','cio','cto','ciso','cdo','cdio','cto','ctdo','ctdto','vp','svp',
+                   'evp','avp','hod','mis','edp','dgm','agm','gm','md','ceo','coo','cfo',
+                   'cxo','ict','bfsi','hr','isms','soc'}
+
+def _strip_title_notes(t):
+    """Extract just the job TITLE from a verbose research string.
+    Researchers sometimes append notes ('CEO - gatekeeper; no IT found',
+    'CDO (role; last incumbent moved to TCS)'). A Designation should be a clean
+    title, so cut those off (the context is already conveyed by the tier +
+    gatekeeper prefix + notes elsewhere)."""
+    t = str(t or '').strip()
+    if not t:
+        return ''
+    # Cut at the first note separator (; or " - lowercase note" or ", no/gatekeeper…")
+    t = re.split(r';|\s[-–]\s(?=[a-z])|,\s+(?=no\b|gatekeeper|former|role\b)', t)[0]
+    # Protect short acronyms like (CTO), then strip longer parenthetical notes —
+    # both closed "(role; …)" and UNCLOSED trailing "(role…" that runs to the end.
+    t = re.sub(r'\(([A-Za-z/&]{1,8})\)', r'<<\1>>', t)   # protect short acronyms
+    t = re.sub(r'\([^)]*\)', '', t)                       # remove closed notes
+    t = re.sub(r'\([^)]*$', '', t)                        # remove unclosed trailing note
+    t = t.replace('<<', '(').replace('>>', ')')
+    # Drop trailing note phrases / role descriptors
+    t = re.sub(r'(?i)\s*[-–]\s*(gatekeeper|no\s+(public\s+|dedicated\s+)?(it|cio|cto|ciso)|former|unverified|role\b).*$', '', t)
+    t = re.sub(r'(?i)\bgatekeeper\b[;:].*$', '', t)
+    # Drop a trailing ", <Company/group>" suffix the agents sometimes append
+    t = re.sub(r',\s+[A-Z][\w&./ -]+$', '', t)
+    t = re.sub(r'\s+', ' ', t).strip(' -–,;:/')
+    # Word-boundary truncation (never cut mid-word like "Siem")
+    if len(t) > 60:
+        cut = t[:60].rsplit(' ', 1)[0]
+        t = cut if cut else t[:60]
+    return t.strip(' -–,;:/')
+
+
+def _tidy_title(t):
+    """Clean a verbatim job title — strip embedded notes, fix acronym casing."""
+    t = _strip_title_notes(t)
+    t = re.sub(r'\s+', ' ', t).strip(' -,–')
+    if not t:
+        return ''
+    # Already mixed-case (e.g. "Chief Technology Officer") → trust it as-is
+    if any(c.islower() for c in t) and any(c.isupper() for c in t):
+        return t
+    # All-upper or all-lower → title-case, but keep known acronyms uppercase
+    out = []
+    for w in t.split():
+        core = re.sub(r'[^a-z]', '', w.lower())
+        out.append(w.upper() if core in _TITLE_ACRONYMS else w.capitalize())
+    return ' '.join(out)
+
+
 def _map_designation(found, has_name=True):
-    """Map free-text title to one of AIPL's 4 IT buckets or a clean Gatekeeper- bucket.
-    Returns (designation, is_it_role, is_default_placeholder).
+    """
+    Classify a job title. KEEPS THE REAL VERBATIM TITLE as the displayed
+    designation (so the team sees "CTO" / "CISO" / "Head of IT" — not everyone
+    flattened into one bucket), and ALSO returns the AIPL target-role TIER for
+    filtering/prioritisation.
+
+    Returns (display_designation, tier_bucket, is_it_role, is_default_placeholder)
+      display_designation = the real title (IT roles) or "Gatekeeper - <title>"
+      tier_bucket         = one of AIPL's 4 IT buckets, or '' for non-IT
     """
     if not found:
-        # If we have a name but no title, mark unknown gatekeeper. Otherwise placeholder.
         if has_name:
-            return ('Gatekeeper - Unknown Role', False, False)
-        return ('IT Manager / IT Head', False, True)
+            return ('Contact (role unconfirmed)', '', False, False)
+        return ('', '', False, True)
     f = found.strip()
     fl = f.lower()
-    # Real IT roles
-    if re.search(r'\b(cio|cto|ciso|chief\s+information\s+officer|chief\s+technology\s+officer|vp\s*-?\s*(it|tech|technology|information)|vice\s*president\s*-?\s*(it|tech|technology|information))\b', fl):
-        return ('VP IT / CISO / CTO', True, False)
-    if re.search(r'\b(it\s*infra|infrastructure\s*(head|manager|lead))\b', fl):
-        return ('IT Infra / Sr. IT Infra', True, False)
-    if re.search(r'\b(it\s*(procurement|purchase|purchasing)|procurement\s*head|purchase\s*head)\b', fl):
-        return ('IT Procurement / Purchase', True, False)
-    if re.search(r'\b(it\s*(head|manager|lead)|head\s*-?\s*it|head\s+of\s+(it|technology|digital)|manager\s*-?\s*it|sr\.?\s*vp\s*&?\s*cio|it\s+professional)\b', fl):
-        return ('IT Manager / IT Head', True, False)
-    # Garbage placeholders that crept in from prior runs
+    disp = _tidy_title(f)
+
+    # ---- Real IT decision-maker roles: SHOW the real title, tag the tier ----
+    # Top tier: CIO/CTO/CISO/CDO/CDIO/CTDTO + VP/Head/Chief of IT/Tech/Digital/Security
+    if re.search(r'\b(cio|cto|ciso|cdo|cdio|ct[dо]?to|cd?to|chief\s+(information|technolog|digital|security|data|innovation)\w*'
+                 r'|chief\s+\w+\s+(information|technology|digital|security)\s+officer'
+                 r'|vp\s*[-&]?\s*(it|ict|tech|technolog\w*|information|digital|infra\w*)'
+                 r'|(vice[\s-]*president|head|director|gm|general\s+manager|sr\.?\s*vp|senior\s+vice[\s-]*president)\s*[-&,]?\s*'
+                 r'(of\s+)?(it|ict|information\s+technolog\w*|technolog\w*|digital|cyber\s*security|information\s+security))\b', fl):
+        return (disp, 'VP IT / CISO / CTO', True, False)
+    if re.search(r'\b(it\s*infra\w*|infrastructure\s*(head|manager|lead|engineer)|network\s+(head|manager|admin)|datacent\w+\s+(head|manager))\b', fl):
+        return (disp, 'IT Infra / Sr. IT Infra', True, False)
+    if re.search(r'\b(it\s*(procurement|purchase|purchasing|sourcing)|(procurement|purchase)\s*head|head\s*[-,]?\s*(it\s*)?procurement)\b', fl):
+        return (disp, 'IT Procurement / Purchase', True, False)
+    if re.search(r'\b(it\s*(head|manager|lead|admin\w*)|head\s*[-,]?\s*it|head\s+of\s+(it|technolog\w*|digital|systems|mis)|manager\s*[-,]?\s*(it|systems|mis)|systems?\s+(head|manager|admin)|mis\s+(head|manager)|edp\s+(head|manager)|it\s+professional)\b', fl):
+        return (disp, 'IT Manager / IT Head', True, False)
+
+    # ---- Garbage placeholders ----
     if f in ('Care Of (Reg. Address)', 'Contact (role unspecified)', 'Head Office Contact'):
-        return ('Gatekeeper - Unknown Role', False, False)
-    # Clean Gatekeeper buckets (instead of 24 variants of "Chairman/Director/Founder")
-    if 'chairman' in fl and ('md' in fl or 'managing' in fl):
-        return ('Gatekeeper - Chairman & MD', False, False)
-    if 'managing director' in fl or fl == 'md':
-        return ('Gatekeeper - Managing Director', False, False)
-    if 'chairman' in fl:
-        return ('Gatekeeper - Chairman', False, False)
-    if 'ceo' in fl:
-        return ('Gatekeeper - CEO', False, False)
-    if 'founder' in fl:
-        return ('Gatekeeper - Founder', False, False)
-    if 'designated partner' in fl or 'partner' in fl:
-        return ('Gatekeeper - Partner', False, False)
-    if 'director' in fl:
-        return ('Gatekeeper - Director', False, False)
-    # Last resort: keep verbatim under Gatekeeper prefix
-    return (f'Gatekeeper - {f}', False, False)
+        return ('Contact (role unconfirmed)', '', False, False)
+
+    # ---- Non-IT contacts: keep their REAL title under a Gatekeeper prefix ----
+    return (f'Gatekeeper - {disp}', '', False, False)
 
 def _build_row(src, enr):
     """Build one Vtiger row from a source company dict + enrichment dict."""
@@ -252,13 +304,19 @@ def _build_row(src, enr):
     ln = (enr.get('last') or '').strip()
     has_name = bool(fn or ln)
     found_title = (enr.get('designation') or '').strip()
-    mapped_title, is_it_role, is_default = _map_designation(found_title, has_name=has_name)
+    mapped_title, role_tier, is_it_role, is_default = _map_designation(found_title, has_name=has_name)
 
     # Salutation: only set if enrichment explicitly provided one (don't guess from name)
     row['Salutation']    = (enr.get('salutation') or '').strip()
     row['First Name']    = fn
     row['Last Name']     = ln
+    # Designation now shows the REAL title (CTO/CIO/CISO/Head of IT/...), not a
+    # one-size bucket. The AIPL target-role tier is stamped separately below.
     row['Designation']   = mapped_title
+    # Internal tier (not a Vtiger column → not written to Excel) so the
+    # scoring/action helpers can still recognise IT roles after we switched
+    # Designation to the real verbatim title.
+    row['_role_tier']    = role_tier
     row['Primary Email'] = (enr.get('email') or '').strip()
     # ---- Phone tiers (CEO's backup idea) ----
     # Office Phone = the best line we have: contact's office number, else the
@@ -299,6 +357,10 @@ def _build_row(src, enr):
 
     # ---- Additional Details: stash provenance ----
     details = []
+    # AIPL target-role tier (for the team to filter on, since Designation now
+    # shows the real varied title instead of the bucket).
+    if role_tier:
+        details.append(f'IT ROLE TIER: {role_tier}')
     # CEO's backup idea — label which tier the Office Phone is + list the backups.
     if contact_phone:
         details.append("PHONE TIER: contact's own line (Office Phone)")
@@ -494,7 +556,7 @@ def build_files(companies, enrichment, output_dir='/mnt/user-data/outputs', file
 
     # ---- Comma-CSV (for Vtiger import) ----
     with open(csv_path, 'w', encoding='utf-8', newline='') as f:
-        w = csv.DictWriter(f, fieldnames=VTIGER_HEADERS, delimiter=',', quoting=csv.QUOTE_ALL)
+        w = csv.DictWriter(f, fieldnames=VTIGER_HEADERS, delimiter=',', quoting=csv.QUOTE_ALL, extrasaction='ignore')
         w.writeheader()
         w.writerows(rows)
 
@@ -543,7 +605,7 @@ def build_files(companies, enrichment, output_dir='/mnt/user-data/outputs', file
     ws2.freeze_panes = 'A2'
     wb2.save(xlsx_path)
     with open(csv_path, 'w', encoding='utf-8', newline='') as f:
-        w = csv.DictWriter(f, fieldnames=VTIGER_HEADERS, delimiter=',', quoting=csv.QUOTE_ALL)
+        w = csv.DictWriter(f, fieldnames=VTIGER_HEADERS, delimiter=',', quoting=csv.QUOTE_ALL, extrasaction='ignore')
         w.writeheader()
         w.writerows(rows)
 
@@ -771,7 +833,10 @@ def _classify_action(r):
     ad = str(r.get('Additional Details','')).strip()
 
     has_name = bool(fn or ln)
-    is_it = desg in ('VP IT / CISO / CTO','IT Manager / IT Head','IT Infra / Sr. IT Infra','IT Procurement / Purchase')
+    # Designation now holds the REAL title, so detect IT roles via the internal
+    # tier (falls back to the role-tier note in Additional Details).
+    tier = str(r.get('_role_tier','')).strip()
+    is_it = bool(tier) or 'IT ROLE TIER:' in ad
     is_gatekeeper = desg.startswith('Gatekeeper')
 
     if not has_name:

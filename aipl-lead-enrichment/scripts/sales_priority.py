@@ -105,14 +105,27 @@ def _size_score(company_name):
     return 4  # default
 
 
-def _role_score(designation):
-    """Score the contact's role."""
+def _role_score(designation, role_tier=''):
+    """Score the contact's role. Uses the AIPL role-tier (since Designation now
+    holds the real verbatim title, not the 4-bucket name)."""
+    if role_tier and role_tier in IT_ROLES:
+        return IT_ROLES[role_tier]            # IT decision-maker, scored by tier
     if not designation:
         return 0
-    if designation in IT_ROLES:
-        return IT_ROLES[designation]
-    if designation in GATEKEEPER_ROLES:
-        return GATEKEEPER_ROLES[designation]
+    # Gatekeeper - <real title>: score by the gatekeeper category words
+    dl = designation.lower()
+    if 'managing director' in dl or 'chairman & md' in dl or 'chairman and md' in dl:
+        return 4
+    if 'ceo' in dl or 'chief executive' in dl:
+        return 4
+    if 'chairman' in dl:
+        return 3
+    if 'founder' in dl:
+        return 3
+    if 'director' in dl:
+        return 3
+    if 'partner' in dl:
+        return 2
     return 1  # unknown title
 
 
@@ -133,10 +146,11 @@ def score(row):
     company  = str(row.get('Company',''))
     industry = str(row.get('Industry',''))
     desg     = str(row.get('Designation',''))
+    role_tier = str(row.get('_role_tier','')).strip()
 
     size  = _size_score(company)
     fit   = INDUSTRY_FIT.get(industry, 4)
-    role  = _role_score(desg)
+    role  = _role_score(desg, role_tier)
     data  = _data_completeness(row)
 
     # If company is a Sahakari / Nidhi / Producer Co, just skip
