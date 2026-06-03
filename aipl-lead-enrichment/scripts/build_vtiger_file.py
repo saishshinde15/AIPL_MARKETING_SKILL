@@ -309,6 +309,20 @@ def _build_row(src, enr):
         details.append(f'IT DEPT PHONE (backup): {it_dept_phone} — direct line into IT')
     if company_phone and company_phone != row['Office Phone']:
         details.append(f'COMPANY SWITCHBOARD (backup): {company_phone}')
+
+    # ---- No phone found anywhere → tell the team EXACTLY where to grab it (30 sec) ----
+    # The number usually exists but is gated behind JustDial's "Show Number" (which
+    # we won't scrape) or not freely published. Instead of a dead blank, hand the
+    # team a ready manual lookup so they can reveal it themselves.
+    if not row['Office Phone'] and not row['Mobile Phone']:
+        comp_q  = str(row['Company']).strip()
+        city_q  = str(row.get('City','')).strip()
+        gq = (comp_q + (' ' + city_q if city_q else '')).replace(' ', '+')
+        details.append(
+            f"📞 NO FREE PHONE FOUND — get it manually (~30 sec): "
+            f"JustDial → search \"{comp_q}{(' ' + city_q) if city_q else ''}\" → click "
+            f"'Show Number'. Or Google: https://www.google.com/search?q={gq}+phone+contact"
+        )
     # Only flag if the title looked IT-like at first glance but didn't match an IT bucket
     # (mapped_title starts with "Gatekeeper -" already communicates the rest)
     if (fn or ln) and not is_it_role and found_title and not mapped_title.startswith('Gatekeeper'):

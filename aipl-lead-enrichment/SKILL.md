@@ -73,6 +73,8 @@ The orchestrator returns a `summary` + `next_action` string — relay both to th
      but it should be RARE, not 30% of named rows.
 
      Also search explicitly for the IT line: `"<Company>" IT helpdesk OR "IT department" phone`. Always cite the source. Target: ~90% of companies with at least the switchboard.
+
+     **When a number genuinely can't be found for free** (often it's gated behind JustDial's "Show Number", which we don't scrape), the skill auto-adds a note to that row's `Additional Details`: `📞 NO FREE PHONE FOUND — get it manually (~30 sec): JustDial → search "<company> <city>" → Show Number. Or Google: <link>`. So a blank phone is never a dead end — the team gets a ready manual lookup. This is automatic in `build_vtiger_file.py`; no action needed.
      `google_places_phone.py` exists but is **dormant** (needs a card) — leave it off.
      **Note:** these are office **switchboards**, not the IT Head's direct mobile. Pair with the "ask for IT Head" scripts. Direct mobiles are paid-only (EazyReach, India-specific) — recommend to AIPL only if switchboard coverage isn't enough.
 
