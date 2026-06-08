@@ -4,6 +4,45 @@ All notable changes to this skill. Following [Keep a Changelog](https://keepacha
 
 ---
 
+## [v8.1] — 2026-06-08
+
+### Added — Batched real-research workflow is now part of the skill
+- **`scripts/merge_research_chunks.py`** — reusable, deterministic merge that
+  stitches batched research results back onto the source file's EXACT company
+  names so `build_files()` can find each one. The hardened `core()` matcher
+  reconciles what used to silently blank rows: legal-form suffixes, "(formerly …)"
+  / "(CIC)" parenthetical notes, dd-mm-yyyy / "w.e.f" date noise, **spaced-out
+  acronyms** ("H D F C" → HDFC), minor typos ("Somp" → Sompo, "Aegeon" → Aegon),
+  and **true duplicates** (a company listed twice). Optional `extra_stop` lets a
+  sector-uniform list (all-Insurance, all-NBFC) match on the distinctive part.
+  Importable `merge(companies, chunks, extra_stop=…) -> (enrichment, report)`,
+  plus a `--selftest` and a CLI match-report. Self-test + a real 89-company
+  insurance list both reconcile **100%**.
+- **SKILL.md** — new "Big lists — batched real research (the 'no-cheating' mode)"
+  section documenting the chunk→research→merge→build loop for 40+ company lists.
+
+### Honesty note baked into the skill
+- The new section states plainly that the **Claude.ai app has no sub-agents**, so
+  it runs the research batches **sequentially** (same quality/coverage as a
+  Claude Code parallel run, just slower and bounded by the message budget). The
+  **merge step is identical and free everywhere** — that's what makes the output
+  reproducible regardless of where the skill runs. No promise that the app
+  matches Claude Code on *speed*; only on *result*.
+
+### Proven on real runs
+- Insurance list (89 cos, all operating insurers/TPAs/brokers): **92% named,
+  98% callable, 96% email (93% real-published), 78% with a named IT
+  decision-maker** — vs ~21% on the older NBFC holding-SPV list. Same engine;
+  the difference is operating companies vs non-operating holding shells.
+
+### Note
+- Tags v6.1 → v8.0 shipped on GitHub without individual changelog entries; v8.0
+  was the consolidated stable release (bulletproof input, structural sizing,
+  3-tier phone backup, real-email harvesting, real-title designations). v8.1
+  builds directly on it.
+
+---
+
 ## [v6.0] — 2026-05-27
 
 ### Added — Sales enablement layer (the "different product" pitch)

@@ -169,6 +169,55 @@ Then re-run `build_files()` with the newly-found contacts merged into the enrich
 
 ---
 
+## Big lists — batched real research (the "no-cheating" mode)
+
+When the list is large (roughly **40+ companies**) or the user asks for *"real
+research / no cheating / real emails and phones"*, do NOT try to research every
+company in one giant pass and do NOT lean on the cache — work in **batches** and
+**merge**. This is the method that produced the best real runs (e.g. an
+insurance list: **78% with a named IT decision-maker, 98% callable, 96% real
+email**).
+
+**The loop:**
+1. **Split** the company list into chunks of **~10**.
+2. **Research each chunk for real** — one web pass per company following the
+   normal order (IT decision-maker by name → gatekeeper fallback → **mandatory
+   switchboard** → verified site → real published email; cite every source; never
+   fabricate). Capture each chunk as a plain dict keyed by the company name:
+   `{ "<Company>": {first, last, designation, email, phone, mobile,
+   company_phone, website, source_url, confidence, notes}, ... }`.
+3. **Merge** every chunk back onto the file's EXACT company names with
+   `scripts/merge_research_chunks.py` → `merge(companies, chunks, extra_stop=…)`.
+   It returns `enrichment` keyed by the exact source names, ready for
+   `build_files()`. It reconciles the things that otherwise silently blank a row:
+   legal-form suffixes, "(formerly …)" / "(CIC)" notes, **spaced acronyms**
+   ("H D F C" → HDFC), minor typos ("Somp" → Sompo), and **true duplicates** (the
+   same company listed twice). If every row shares a sector word (e.g. an
+   all-insurance or all-NBFC list), pass it via `extra_stop={'insurance','life'}`
+   so matching keys on the distinctive part. Eyeball the returned `report` — aim
+   for all rows matched before building.
+4. **Build** once: `build_files(companies, enrichment, output_dir=…)`.
+
+```python
+from merge_research_chunks import merge
+from build_vtiger_file import build_files
+enrichment, report = merge(companies, chunks, extra_stop={'insurance', 'life', 'general'})
+unmatched = [r for r in report if r[2].startswith('***')]   # should be empty
+paths = build_files(companies, enrichment, output_dir='/mnt/user-data/outputs')
+```
+
+**🔴 PORTABILITY — be honest about this with the user.** In **Claude Code / the
+API** the chunk research can be fanned out to parallel sub-agents (fast). In the
+**Claude.ai app there are no sub-agents**, so Claude does the chunks
+**sequentially in the one conversation** — *same quality and coverage, just
+slower*, and bounded by the 5-hour message budget (so big lists may span
+sessions; cached results mean you never re-pay for a company already done). The
+**merge step is identical, deterministic and free everywhere** — that's the part
+that makes the output reproducible regardless of where it runs. Don't promise the
+app will be as fast as a parallel run; do promise the same result.
+
+---
+
 ## Merge step (rare — only if user has external tool export CSVs)
 
 If the user uploads CSV/XLSX exports + the master file and says "merge these", "I'm done with manual lookups", or similar:
