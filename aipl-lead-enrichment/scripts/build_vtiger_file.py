@@ -436,7 +436,10 @@ def _build_row(src, enr, cache=None):
         raw_email = ''
     if raw_email and '@' in raw_email:
         row['Primary Email'] = raw_email                     # a real person-email
-        email_tier = 'Confirmed — published' if src_url else 'Confirmed — researched'
+        # an explicit pre-set tier (e.g. a pattern-derived email injected upstream)
+        # is honoured so derived addresses are never mislabelled "Confirmed".
+        email_tier = (str(enr.get('email_confidence') or '').strip()
+                      or ('Confirmed — published' if src_url else 'Confirmed — researched'))
         domain = domain or raw_email.split('@', 1)[1].lower()
     if not domain:
         domain = _email_domain(row['Website']) or _email_domain(src_url)
@@ -596,6 +599,9 @@ def _merge_cache_into_enrichment(companies, enrichment):
                 'last':        fresh.get('last')        or cached.get('last_name', ''),
                 'designation': fresh.get('designation') or cached.get('designation', ''),
                 'email':       fresh.get('email')       or cached_email,
+                # preserve a fresh pre-set email tier (e.g. pattern-derived) so the
+                # cache-merge never relabels a derived address as "Confirmed".
+                'email_confidence': fresh.get('email_confidence', ''),
                 'phone':       fresh.get('phone')       or cached.get('phone', ''),
                 'mobile':      fresh.get('mobile')      or cached.get('mobile', ''),
                 # v7.7.2 FIX: preserve the company-switchboard + IT-dept backups
@@ -625,7 +631,14 @@ def _merge_cache_into_enrichment(companies, enrichment):
                 address=str(src.get('Address','')),
                 pincode=str(src.get('Pincode','')),
             )
-            cache.save_contact(name, fresh)
+            # Cache hygiene: a pattern-DERIVED email is high-probability, not
+            # verified — don't store it as a confirmed cached contact (it would
+            # later resurface as "Confirmed" and lose its derived tier). Save the
+            # name/phone, but blank the derived email so it's always re-derived.
+            to_save = fresh
+            if str(fresh.get('email_confidence', '')).startswith('Verified-pattern'):
+                to_save = dict(fresh); to_save['email'] = ''
+            cache.save_contact(name, to_save)
 
     cache.close()
     return merged

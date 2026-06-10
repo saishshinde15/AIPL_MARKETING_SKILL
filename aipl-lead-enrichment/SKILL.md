@@ -233,6 +233,56 @@ app will be as fast as a parallel run; do promise the same result.
 
 ---
 
+## 🔑 The pattern-finding pass — biggest free lever on email coverage
+
+This is the single highest-leverage move for email, and the team loves it. On a
+real Housing-Finance run it took email coverage from **34% → 73%** with **0 role
+inboxes and 0 fabrication.** Run it AFTER the main enrichment, on the rows that
+have a NAMED contact but a BLANK email.
+
+**Why it works:** finding a decision-maker's *own* published email is hard
+(broker-masked). But finding ONE real example email at their company's domain —
+of ANY employee — is easy, and it reveals the company's email **format**. With
+the format proven by a real address + the decision-maker's name (already found),
+you DERIVE their email. Evidence-backed inference, tagged `Verified-pattern` —
+never a blind guess, never `Confirmed`.
+
+**The loop:**
+1. List companies with a named contact but blank email (the gap).
+2. For each company's domain, research ONE real PUBLISHED example address (a name
+   in the local-part, NOT a role inbox). Best free sources, in order:
+   - **NHB "List of Nodal Officers / Point of Contacts of HFCs" PDF** ⭐ — gold for
+     HFC/NBFC lists; prints officer name + real email (search `NHB nodal officers
+     HFC pdf` on nhb.org.in; Aug-2024 / Sep-2025 / Mar-2026 editions).
+   - **BSE/NSE filings, IPO prospectuses, annual reports** — Company Secretary /
+     Compliance / KMP emails are real and published (gold for listed cos).
+   - Company **Team / Contact / Grievance-officer page**, press releases, speaker bios.
+   Classify the pattern from that one real address (`first.last`, `first`, `flast`,
+   `first.l`, etc.). See `references/pattern-sources.md`.
+   - ⚠ **Mail domain often ≠ website domain** (bajajhousingfinance.in →
+     `bajajhousing.co.in`; saharahousingfina.com → `sahara.in`; an Adani entity →
+     `tyger.in`). Use the REAL mail domain — capture it as an override.
+3. Feed `{domain: pattern}` (+ sibling-domain overrides) to
+   `scripts/derive_emails.py` → `derive(enrichment, companies, patterns,
+   mail_overrides=...)`. It seeds the cache and fills each named-blank email,
+   tagged `Verified-pattern`. Then `build_files()`.
+
+```python
+from derive_emails import derive
+patterns  = {"aavas.in": "first.last", "canfinhomes.com": "first.last", ...}   # PROVEN from real examples
+overrides = {"bajajhousing": "bajajhousing.co.in", "sahara": "sahara.in"}      # mail≠website
+enrichment, n = derive(enrichment, companies, patterns, mail_overrides=overrides)
+paths = build_files(companies, enrichment, output_dir=...)
+```
+
+**Be honest about what `Verified-pattern` means.** Name confirmed + format proven
+= **~85–90% likely correct each**, but NOT individually inbox-verified (that check
+is blocked). On a bulk send expect a few to bounce. So "73% coverage" ≈ ~66%
+that actually land. It clears a 70%-*coverage* bar; a guaranteed 70%-*verified*
+still needs bounce-tolerance or a paid verify step — say so, don't oversell.
+
+---
+
 ## Merge step (rare — only if user has external tool export CSVs)
 
 If the user uploads CSV/XLSX exports + the master file and says "merge these", "I'm done with manual lookups", or similar:

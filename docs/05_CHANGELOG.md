@@ -4,6 +4,41 @@ All notable changes to this skill. Following [Keep a Changelog](https://keepacha
 
 ---
 
+## [v8.3] — 2026-06-10
+
+### Added — The pattern-finding pass (biggest free lever on email coverage)
+Folds in the method that took a real Housing-Finance run from **34% → 73% email
+coverage** with **0 role inboxes and 0 fabrication**. Finding a decision-maker's
+own email is hard; finding ONE real example address at their domain is easy and
+reveals the company's email **format** — which (with the name already found) lets
+you DERIVE the address. Evidence-backed, tagged `Verified-pattern`, never guessed.
+- **`scripts/derive_emails.py`** — reusable helper. `derive(enrichment, companies,
+  patterns, mail_overrides=…)` seeds proven `{domain: pattern}` into the cache and
+  fills each named-but-blank email, tagged `Verified-pattern`. Handles the common
+  **mail-domain ≠ website-domain** case via overrides (bajajhousingfinance.in →
+  bajajhousing.co.in; saharahousingfina.com → sahara.in; etc.). Self-tested.
+- **`references/pattern-sources.md`** — where to prove a pattern free: the **NHB
+  Nodal-Officer PDF** (gold for HFC/NBFC), BSE/NSE filings & annual reports
+  (CS/Compliance/KMP emails), company team pages; plus the local-part → pattern
+  table and the sibling-mail-domain list.
+- **SKILL.md** — new "🔑 The pattern-finding pass" section documenting the loop and
+  the honesty rule (`Verified-pattern` = ~85–90% likely, not inbox-verified; expect
+  a few bounces on bulk send — clears a 70%-*coverage* bar, not a 70%-*verified* one).
+
+### Fixed
+- `build_vtiger_file.py`: the cache-merge now **preserves a pre-set
+  `email_confidence`** so a derived address is never relabelled `Confirmed`, and
+  **does not cache derived emails as verified contacts** (cache hygiene — they're
+  always re-derived, never resurface mislabelled).
+- `_build_row` honours an explicit `email_confidence` on the enrichment record.
+
+### Proven
+- HFC list (99 cos): email coverage **34% → 73%**, 0 role inboxes — 8
+  `Confirmed-published` + 65 `Verified-pattern` (each derived from a real example
+  proven via NHB/BSE).
+
+---
+
 ## [v8.2] — 2026-06-08
 
 ### Changed — Email is now person-direct + tiered, never a role inbox
