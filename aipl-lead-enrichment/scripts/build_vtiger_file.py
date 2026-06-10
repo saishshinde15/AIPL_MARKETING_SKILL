@@ -267,8 +267,92 @@ def _map_designation(found, has_name=True):
     # ---- Non-IT contacts: keep their REAL title under a Gatekeeper prefix ----
     return (f'Gatekeeper - {disp}', '', False, False)
 
-def _build_row(src, enr):
-    """Build one Vtiger row from a source company dict + enrichment dict."""
+# ---- v8.2 email helpers (person-first, no role inboxes, derive only from proof) ----
+_ROLE_LOCALPARTS = {
+    'grievance', 'grievances', 'info', 'care', 'customercare', 'customerservice',
+    'customerfirst', 'customersupport', 'support', 'nodal', 'helpdesk', 'help',
+    'contact', 'contactus', 'service', 'services', 'enquiry', 'enquiries',
+    'investor', 'investors', 'cs', 'secretarial', 'secretary', 'compliance',
+    'complaints', 'gro', 'headoffice', 'ho', 'feedback', 'claims', 'redressal',
+    'redress', 'sales', 'marketing', 'admin', 'administration', 'hr', 'office',
+    'mail', 'reachus', 'dpo', 'dpdp', 'helpline', 'customer', 'wecare', 'queries',
+    'query', 'response', 'connect', 'hello', 'team', 'noreply', 'no-reply',
+}
+
+
+# Long, unambiguous role stems — safe to match even when concatenated with no
+# separator (e.g. "indiaservice", "websupport"). Short/ambiguous ones (gro, care,
+# info, hr, cs) are matched only as whole tokens to avoid hitting real names.
+_ROLE_SUBSTRINGS = ('grievance', 'service', 'support', 'customer', 'nodal',
+                    'complaint', 'redress', 'helpdesk', 'feedback', 'enquir',
+                    'compliance', 'secretar', 'wecare', 'custcare')
+
+
+def _is_role_inbox(email):
+    """A generic/role mailbox (grievance@/info@/care@/fggro@) — never reaches the person."""
+    if not email or '@' not in email:
+        return False
+    local = email.split('@', 1)[0].lower().strip()
+    if local in _ROLE_LOCALPARTS:
+        return True
+    if any(t in _ROLE_LOCALPARTS for t in re.split(r'[._\-+]+', local)):
+        return True
+    if any(s in local for s in _ROLE_SUBSTRINGS):
+        return True
+    if local.endswith('gro'):           # GRO (grievance redressal officer) mailboxes
+        return True
+    return False
+
+
+def _email_domain(s):
+    """Domain from a website URL, a plain URL, or an email. '' if none usable."""
+    if not s:
+        return ''
+    s = str(s).strip().lower()
+    if not s or s == 'nan':
+        return ''
+    if '@' in s and ' ' not in s and '/' not in s:
+        return s.split('@', 1)[1]
+    s = s.split()[0]
+    s = re.sub(r'^https?://', '', s).split('/')[0].split('?')[0]
+    if s.startswith('www.'):
+        s = s[4:]
+    return s if re.match(r'^[\w-]+\.[\w.-]+$', s) else ''
+
+
+def _base_domain(d):
+    """Registrable base domain — strip subdomains so a pattern learned on
+    'adityabirlacapital.com' still matches 'lifeinsurance.adityabirlacapital.com'."""
+    parts = (d or '').split('.')
+    if len(parts) <= 2:
+        return d
+    if parts[-2] in ('co', 'net', 'org', 'gov', 'ac', 'edu') and len(parts[-1]) == 2:
+        return '.'.join(parts[-3:])          # e.g. co.in / co.uk
+    return '.'.join(parts[-2:])
+
+
+def _derive_email(first, last, domain, pattern):
+    """Build the address for a cache-CONFIRMED company `pattern`. '' if the pattern
+    needs a surname we don't have. This is the ONLY place the skill writes a derived
+    address — and only when the pattern is proven by the team's own real data."""
+    f = re.sub(r'[^a-z]', '', (first or '').lower())
+    l = re.sub(r'[^a-z]', '', (last or '').lower())
+    if not f or not domain:
+        return ''
+    fl, ll = f[:1], (l[:1] if l else '')
+    if pattern != 'first' and not l:        # needs a surname we don't have
+        return ''
+    local = {
+        'first.last': f'{f}.{l}', 'firstlast': f'{f}{l}', 'flast': f'{fl}{l}',
+        'first': f, 'first_last': f'{f}_{l}', 'last.first': f'{l}.{f}',
+        'first.l': f'{f}.{ll}', 'f.last': f'{fl}.{l}',
+    }.get(pattern, '').strip('._-')
+    return f'{local}@{domain}' if len(local) >= 2 else ''
+
+
+def _build_row(src, enr, cache=None):
+    """Build one Vtiger row from a source company dict + enrichment dict.
+    `cache` (local_cache.Cache) enables v8.2 confirmed-pattern email derivation."""
     row = {h: '' for h in VTIGER_HEADERS}
 
     # ---- Defaults (apply to every row) ----
@@ -317,7 +401,7 @@ def _build_row(src, enr):
     # scoring/action helpers can still recognise IT roles after we switched
     # Designation to the real verbatim title.
     row['_role_tier']    = role_tier
-    row['Primary Email'] = (enr.get('email') or '').strip()
+    # Primary Email is resolved by the v8.2 tiered waterfall below (after Website).
     # ---- Phone tiers (CEO's backup idea) ----
     # Office Phone = the best line we have: contact's office number, else the
     # company switchboard (so EVERY company with a findable number is callable).
@@ -332,23 +416,52 @@ def _build_row(src, enr):
     row['Mobile Phone']  = _normalize_phone(enr.get('mobile'))
     row['Website']       = _clean_website(enr.get('website'))
 
-    # ---- Auto-fill missing email via permutation + MX validation ----
-    # Only fires when we have a name + a verified website but no email.
-    # Pure Python, zero LLM calls, ~1 sec per company.
-    if has_name and not row['Primary Email'] and row['Website']:
+    # ---- v8.2 Email resolution: tiered, person-first, NO role inboxes ----
+    # Priority: researched person-email → confirmed-pattern derive (only where the
+    # cache has a pattern PROVEN by the team's real data) → blank + intel.
+    # A grievance@/info@ role inbox is NEVER the Primary Email — it doesn't reach
+    # the person; it's parked in Additional Details as a fallback only.
+    email_tier = role_inbox_note = email_intel = ''
+    src_url = (enr.get('source_url') or '').strip()
+    raw_email = (enr.get('email') or '').strip()
+    if raw_email and '(pattern-guess' in raw_email.lower():
+        raw_email = raw_email.split('(')[0].strip()          # drop any legacy guess tag
+    # Prefer the REAL mail domain (from the email itself) over the website domain —
+    # a company's site (bhartiaxa.com / a subdomain) often differs from its mail
+    # domain (bharti-axalife.com), and the email's domain is the one patterns use.
+    domain = ''
+    if raw_email and _is_role_inbox(raw_email):
+        role_inbox_note = raw_email                          # park it, not the person
+        domain = raw_email.split('@', 1)[1].lower()          # the company's real mail domain
+        raw_email = ''
+    if raw_email and '@' in raw_email:
+        row['Primary Email'] = raw_email                     # a real person-email
+        email_tier = 'Confirmed — published' if src_url else 'Confirmed — researched'
+        domain = domain or raw_email.split('@', 1)[1].lower()
+    if not domain:
+        domain = _email_domain(row['Website']) or _email_domain(src_url)
+    # No person-email yet → derive ONLY from a cache pattern proven by real data
+    if not row['Primary Email'] and has_name and domain and cache is not None:
         try:
-            from email_finder import find_email
-            r = find_email(fn, ln, row['Website'])
-            if r and r.get('email') and r.get('mx_ok'):
-                # Mark a pattern-GUESS clearly so nobody mistakes it for verified.
-                # Real (researched/harvested) emails are never touched by this path.
-                row['Primary Email'] = r['email'] + ' (pattern-guess — verify)'
-                enr = dict(enr)
-                enr['notes'] = ((enr.get('notes') or '') +
-                    f" | ⚠ Email is a PATTERN GUESS (not verified): {r['method']} — "
-                    f"confirm before bulk-sending").strip(' |')
+            pat, conf = cache.lookup_pattern(domain)
+            if not pat:                                      # try the registrable base domain
+                base = _base_domain(domain)
+                if base and base != domain:
+                    pat, conf = cache.lookup_pattern(base)
+                    if pat:
+                        domain = base
         except Exception:
-            pass  # never fail the build over an enrichment helper
+            pat, conf = (None, None)
+        if pat and conf in ('High', 'Medium'):
+            derived = _derive_email(fn, ln, domain, pat)
+            if derived:
+                row['Primary Email'] = derived
+                email_tier = f'Verified-pattern ({pat}, {conf} — from your DB)'
+        if not row['Primary Email']:
+            hint = (f' — likely {pat}@{domain}' if pat else (f' on {domain}' if domain else ''))
+            email_intel = (f"NO confirmed email — contact is {(fn + ' ' + ln).strip()}{hint}; "
+                           f"confirm on the company site/exhibitor listing, or spend 1 free "
+                           f"Apollo/Lusha credit on this name").strip()
 
     # ---- Marketing-team defaults (so Vtiger doesn't require manual assign) ----
     row['Industry']        = _infer_industry(row['Company'])
@@ -361,6 +474,13 @@ def _build_row(src, enr):
     # shows the real varied title instead of the bucket).
     if role_tier:
         details.append(f'IT ROLE TIER: {role_tier}')
+    # v8.2 Email confidence — so the team knows exactly how solid the address is.
+    if email_tier:
+        details.append(f'EMAIL CONFIDENCE: {email_tier}')
+    if role_inbox_note:
+        details.append(f'ORG FALLBACK INBOX (not the person): {role_inbox_note}')
+    if email_intel:
+        details.append(f'EMAIL: {email_intel}')
     # CEO's backup idea — label which tier the Office Phone is + list the backups.
     if contact_phone:
         details.append("PHONE TIER: contact's own line (Office Phone)")
@@ -533,11 +653,20 @@ def build_files(companies, enrichment, output_dir='/mnt/user-data/outputs', file
     # ---- Cache flywheel: merge with prior verified contacts + save fresh ones ----
     enrichment = _merge_cache_into_enrichment(companies, enrichment)
 
+    # v8.2: open the cache once so _build_row can derive emails from CONFIRMED
+    # per-domain patterns (learned from the team's own hygienic DB). Degrades
+    # gracefully to no-derivation if the cache can't be opened.
+    try:
+        from local_cache import Cache
+        _cache = Cache()
+    except Exception:
+        _cache = None
+
     rows = []
     for src in companies:
         key = str(src.get('EnterpriseName') or src.get('Company') or '').strip()
         enr = enrichment.get(key, {})
-        rows.append(_build_row(src, enr))
+        rows.append(_build_row(src, enr, cache=_cache))
 
     # ---- XLSX (for human review) ----
     wb = Workbook()

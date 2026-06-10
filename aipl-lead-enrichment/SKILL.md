@@ -42,15 +42,30 @@ The orchestrator returns a `summary` + `next_action` string — relay both to th
    - Fall back to public MCA filings — read Zauba Corp / Tofler pages for Director/MD name + CIN.
    - **Always check the company's own website Contact/About page for the switchboard phone + `info@` email** — this is public-by-design data the company publishes for people to call them. Phone numbers matter as much as emails to AIPL, so spend the effort here.
 3. **Generate the outputs via `scripts/build_vtiger_file.py`:**
-   - **`email_finder.py`** auto-tries 8 common email patterns + MX-validates when we have a name + verified website but no email.
+   - **`ingest_hygienic.py` + `email_finder.py`** — the v8.2 email engine. When the team uploads a **hygienic DB** (a file that already has real name + email columns — e.g. their manually-built master), `ingest_hygienic.py` pours it into the cache, learning each domain's email **pattern**. It detects the name/email/title columns by **content**, not header names, so it survives any file shape (renamed/typo'd headers, blank columns). The build then derives a person's address ONLY from a pattern the cache has proven.
    - **`local_cache.py`** checks `~/.aipl-cache/contacts.db` first → cache hits return in milliseconds (30 min cold → 1 sec repeat). Fresh results saved back. Auto-learns email patterns per domain.
    - **`sales_priority.py`** tags every row Hot / Warm / Cold / Skip (stamped in Vtiger `Source Campaign` field).
    - **`mca_lookup.py`** (optional) auto-fills blanks via OpenCorporates free API if `AIPL_OPENCORP_KEY` env var set.
-   - **🔴 EMAIL — harvest REAL emails, don't just guess.** A pattern-guess (`first.last@`) is ~70% right but unverifiable (corporate mail servers block SMTP checks), so it's a LAST resort. FIRST, hunt for a genuinely published email, in this order:
-     1. **The company's Contact / About page** — real `info@`, IR, and sometimes exec emails (`website_phone_finder.py` auto-harvests these; or read the page yourself).
-     2. **BSE / NSE filing / annual report** — for any listed/SEBI-registered company, the **Company Secretary / Compliance Officer email is legally required to be published** and is a REAL, named, verifiable address. Search `"<Company>" company secretary email BSE` or check the investor-relations page. This is gold for the financial-sector lists (NBFC/HFC/securities).
-     3. **Press releases / news** — media-contact emails.
-     Only if none of those exist, fall back to the pattern guess — and it gets auto-tagged `(pattern-guess — verify)` in Primary Email so the team never bulk-sends to an unverified address. **Prefer one real published email over a guessed personal one.**
+   - **🔴 EMAIL — the IT decision-maker's OWN inbox, or an honest blank. NEVER a role inbox.**
+     The team needs the *person's* address (`first.last@company`), not a `grievance@` / `info@` /
+     Company-Secretary / `care@` mailbox — those reach a complaints desk, not a buyer. They are
+     **auto-detected and banned from Primary Email** (parked in Additional Details as a fallback
+     only). Resolve each email by this waterfall — `build_vtiger_file` does the tiering + tagging
+     (`EMAIL CONFIDENCE:` in Additional Details); you do the harvesting:
+     1. **Already in the cache** (the team's hygienic DB or a prior run) → reuse → `Verified — own data`.
+     2. **Published & self-disclosed → harvest it** → `Confirmed — published`. Best free sources, in
+        order: **trade-fair / exhibitor directories** (organiser-published — named person + email +
+        mobile, segmentable by industry ⭐), the company's **Team / Contact / About page + profile
+        PDFs**, **press releases / speaker bios**. Always cite the source URL.
+     3. **Name + a pattern your own data PROVES** (≥1 real example already in the cache for that
+        domain) → the build derives it and tags `Verified-pattern`. **This is the ONLY place an
+        address is ever derived — and only from a confirmed pattern, never a blind guess.**
+     4. **None of the above** → leave the email **blank**; the build adds intel (name + likely
+        pattern + "confirm on the company site / exhibitor listing, or spend 1 free Apollo/Lusha
+        credit on this Hot name"). A named lead with a blank email beats a wrong/role one.
+     **DPDP rule:** only use emails the company/person **self-published** or a **statutory record** —
+     never broker-resold lists, never login-gated (LinkedIn / IndiaMART) emails, never a fabricated
+     guess. A blank is honest; a `grievance@` or a made-up address is not.
    - **Phone enrichment — phones matter as much as emails to AIPL. Get them FREE via your own web research.** Paid maps APIs (Google Places, HERE) both require a credit card, so we DON'T use them. Instead, work the free **phone-research waterfall in `references/phone-sources.md`** — read it and follow the order. The short version:
      1. **Google business card via normal web search ⭐** — search `"<Company>" <city>` and the phone is usually right there in Google's business-listing/knowledge-panel in the results. Read it. This is the single highest-yield free source and it works even for companies with no website. (You're reading a public search result, not the paid Places API.)
      2. **Company's own Contact/About page** — `website_phone_finder.py` automates this; or read it yourself.

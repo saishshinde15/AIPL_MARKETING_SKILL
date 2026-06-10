@@ -4,6 +4,45 @@ All notable changes to this skill. Following [Keep a Changelog](https://keepacha
 
 ---
 
+## [v8.2] — 2026-06-08
+
+### Changed — Email is now person-direct + tiered, never a role inbox
+The biggest quality fix yet. The old logic preferred "any real published email,"
+which for regulated firms meant `grievance@` / `gro@` / `care@` / Company-Secretary
+inboxes — a complaints desk, useless for sales (on a real insurance run, **55% of
+emails were these role inboxes**). v8.2 inverts it:
+- **`grievance@`/`info@`/`care@`/`gro@`/`*service`/`*support` are auto-detected and
+  BANNED from Primary Email** — parked in Additional Details as a fallback only.
+- New tiered waterfall: cache (`Verified — own data`) → published-harvest
+  (`Confirmed — published`) → **derive ONLY from a cache-proven pattern**
+  (`Verified-pattern`) → honest blank + intel. Every email carries an
+  `EMAIL CONFIDENCE:` tag.
+- **An address is derived only where the team's own data proves the domain's
+  pattern** (≥1 real example). No blind pattern-guessing — that line was set with
+  the user and is enforced in code. No proof → blank + a "where to finish it" note.
+- Result on the insurance file: role inboxes in Primary Email **55% → 0%**, 49
+  person-direct emails all tiered (35 derived from proven patterns, 14 published).
+
+### Added
+- **`scripts/ingest_hygienic.py`** — pours a team-built hygienic DB (real
+  name+email columns) into the cache and learns each domain's email pattern.
+  **Structure-agnostic: detects columns by CONTENT, not header names**, so it
+  survives the team's ever-changing file shapes (renamed/typo'd headers like
+  "Mail id" / "Desgination", blank/category columns). A raw company list (no email
+  column) correctly ingests nothing. Tested: the team's 02.06 insurance DB →
+  190 verified emails + 52 confirmed patterns cached.
+- `build_vtiger_file.py`: `_is_role_inbox`, `_derive_email`, `_email_domain`,
+  `_base_domain` (subdomain → registrable-domain pattern fallback), and the tiered
+  resolver wired into `_build_row` (now takes the cache).
+- SKILL.md: rewritten EMAIL step (person-direct waterfall + tiers + DPDP rule +
+  exhibitor-directory/published-harvest as the primary source).
+
+### Note
+- Rollback point: **v8.1** is the last release before the email engine. If v8.2
+  misbehaves, reinstall the v8.1 release. v8.2 is purely additive to it.
+
+---
+
 ## [v8.1] — 2026-06-08
 
 ### Added — Batched real-research workflow is now part of the skill
